@@ -164,6 +164,27 @@ rhino-7 --fresh
 
 ## Licensing
 
+**The login hangs and the log shows `WebSocketSharp.WebSocketException: The
+header of a frame cannot be read from the stream`.** You signed in fine in the
+browser, but the socket Rhino waits on for the confirmation broke. Stale HTTP
+state inside the prefix is the usual cause:
+
+```bash
+rhino-7 --stop
+rhino-7 --fresh
+ss -ltnp | grep 1717     # make sure nothing else holds the license port
+```
+
+Then start the sign-in again. If it keeps failing, use "Enter a license key" in
+the license dialog instead: that path needs no WebSocket and is much more robust
+under Wine.
+
+**The browser does not open, or crashes.** Rhino's dialog has a
+"My Browser Didn't Open..." button that shows the URL, which you can paste into
+any browser by hand. A browser that crashes with a GTK or pixbuf assertion is a
+host problem, not a Wine one - test it with `firefox https://www.rhino3d.com`
+from a normal terminal.
+
 Rhino 7 signs in to Cloud Zoo by opening your Linux default browser. Two things
 break that:
 
