@@ -41,6 +41,10 @@ CUSTOM_DXVK_DIR=""
 COSMIC_RULES=0
 SKIP_DESKTOP=0
 
+# Upper bound for the dotnet48 step. It normally needs 15 to 40 minutes; the
+# limit only exists so a genuinely stuck installer cannot block the run forever.
+DOTNET_TIMEOUT_MIN="${RHINO_DOTNET_TIMEOUT_MIN:-45}"
+
 print_help() {
     cat << 'EOF'
 deploy-rhino7.sh - Prepare and configure a Wine prefix for Rhinoceros 7.
@@ -161,20 +165,51 @@ elif ! command -v winetricks >/dev/null 2>&1; then
     echo "      Install it (Fedora: sudo dnf install winetricks cabextract) and rerun,"
     echo "      otherwise Rhino 7 will not start."
 else
-    echo "[2/8] Installing .NET Framework 4.8 via winetricks (takes several minutes)..."
+    echo "[2/8] Installing .NET Framework 4.8 via winetricks."
+    echo "      This is the slow step: 15 to 40 minutes, and the longest stretch"
+    echo "      (ndp48-x86-x64-allos-enu.exe) prints nothing at all while it works."
+    echo "      Progress is reported here every minute. Hard limit: ${DOTNET_TIMEOUT_MIN} minutes."
+
     # winetricks drives its own windows version and DLL overrides during the
     # dotnet48 verb, so the ambient overrides are cleared for this call.
     env -u WINEDLLOVERRIDES WINE="$WINE_BIN" WINEPREFIX="$TARGET_PREFIX" \
-        winetricks -q -f dotnet48 || {
-            echo "      ERROR: dotnet48 installation failed." >&2
-            echo "      See docs/troubleshooting.md (section '.NET Framework 4.8')." >&2
-        }
+        timeout "${DOTNET_TIMEOUT_MIN}m" winetricks -q -f dotnet48 &
+    dotnet_pid=$!
+
+    # Heartbeat, so a silent installer is not mistaken for a hung one.
+    elapsed=0
+    while kill -0 "$dotnet_pid" 2>/dev/null; do
+        sleep 60
+        elapsed=$((elapsed + 1))
+        if [ -f "$CLR_PATH" ]; then
+            echo "      ... ${elapsed} min, clr.dll is in place, finishing up"
+        else
+            echo "      ... ${elapsed} min, still installing"
+        fi
+    done
+    wait "$dotnet_pid" && dotnet_rc=0 || dotnet_rc=$?
+
+    if [ "$dotnet_rc" -eq 124 ]; then
+        echo "      [WARN] winetricks hit the ${DOTNET_TIMEOUT_MIN} minute limit and was stopped." >&2
+    elif [ "$dotnet_rc" -ne 0 ]; then
+        echo "      [WARN] winetricks exited with code $dotnet_rc." >&2
+    fi
+
+    # The .NET setup leaves the NGen service running, and it regularly never
+    # exits under Wine. That is what makes the install look stuck at the end,
+    # so these are cleaned up unconditionally.
+    pkill -u "$(id -u)" -f 'mscorsvw' 2>/dev/null || true
+    pkill -u "$(id -u)" -f 'ngen\.exe' 2>/dev/null || true
     "$WINESERVER_BIN" -k 2>/dev/null || true
     wait_wineserver
+
     if [ -f "$CLR_PATH" ]; then
         echo "      [PASS] .NET Framework 4.8 installed."
     else
-        echo "      [WARN] clr.dll not found after the install; Rhino will likely fail."
+        echo "      [FAIL] clr.dll is missing, so Rhino 7 will not start." >&2
+        echo "      Start over with a clean prefix:" >&2
+        echo "        rm -rf '$TARGET_PREFIX' && ./install.sh" >&2
+        echo "      See docs/troubleshooting.md, section '.NET Framework 4.8'." >&2
     fi
 fi
 

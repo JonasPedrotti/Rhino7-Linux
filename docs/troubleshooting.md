@@ -27,6 +27,39 @@ Rhino 7 download from your McNeel account and pass it with `--installer`.
 
 ## .NET Framework 4.8
 
+**It sits at `ndp48-x86-x64-allos-enu.exe /sfxlang:1027 /q /norestart` and nothing
+happens.** That is the real .NET 4.8 installer, and under Wine it runs 15 to 40
+minutes without printing a single line. It is almost certainly working. Check
+from a second terminal:
+
+```bash
+ps -eo pid,etime,pcpu,args | grep -iE 'ndp48|mscorsvw|ngen\.exe' | grep -v grep
+```
+
+CPU above zero means it is still working - wait. Only if it stays at 0.0 for
+several minutes is it genuinely stuck.
+
+**It is stuck at the end.** The .NET setup starts the NGen service
+(`mscorsvw.exe`) to precompile assemblies, and that service regularly never
+exits under Wine, so the install never returns even though the framework is
+already in place. Check and recover:
+
+```bash
+ls ~/.wine-rhino7/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll
+```
+
+If `clr.dll` is there, .NET is installed and only the service is hanging:
+
+```bash
+pkill -f mscorsvw; pkill -f 'ngen\.exe'
+WINEPREFIX=~/.wine-rhino7 wineserver -k
+./install.sh --skip-dotnet
+```
+
+`deploy-rhino7.sh` does this cleanup by itself, prints a progress line every
+minute, and stops winetricks after 45 minutes
+(`RHINO_DOTNET_TIMEOUT_MIN` changes that limit).
+
 **The Rhino installer aborts with `rhino.msi:-2147023293`.**
 The .NET Framework was not really installed. Check it:
 
