@@ -11,9 +11,11 @@ Rhino 8 and 9.
 git clone https://github.com/JonasPedrotti/Rhino7-Linux.git && cd Rhino7-Linux && ./install.sh --deps -y
 ```
 
-This installs the distro packages, creates `~/.wine-rhino7` with .NET
-Framework 4.8 and fonts, downloads the public Rhino 7.38 installer (293 MiB,
-checksum verified) and installs it. Takes a while on the first run.
+One command, from nothing to a clickable icon: distro packages, a prefix at
+`~/.wine-rhino7` with .NET Framework 4.8, the Visual C++ runtime and fonts, the
+public Rhino 7.38 installer (293 MiB, checksum verified), then a menu entry,
+`.3dm` file association and, on COSMIC, a pinned dock icon and a floating window
+rule. 30 to 60 minutes on the first run; it tells you where it is the whole time.
 
 You need your own Rhino 7 license. Only the installer download is automated.
 
@@ -53,7 +55,7 @@ Takes 20 to 60 minutes.
 ## Docs
 
 - [Fedora](docs/fedora.md) - packages, GPU, ntsync, fonts
-- [COSMIC](docs/cosmic.md) - tiling exception, XWayland, HiDPI
+- [COSMIC](docs/cosmic.md) - dock icon, tiling exception, XWayland, HiDPI
 - [Patches](docs/patches.md) - what each one fixes, what was dropped
 - [Troubleshooting](docs/troubleshooting.md)
 

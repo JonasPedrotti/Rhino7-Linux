@@ -155,6 +155,20 @@ else
     echo "[1/8] Existing prefix detected."
 fi
 
+# Wine symlinks the prefix desktop to the real ~/Desktop, so every Windows
+# shortcut an installer creates lands there as an unopenable .lnk. Replacing the
+# symlink with a plain directory keeps the real desktop clean; anything Rhino
+# saves "to the desktop" goes into the prefix folder printed below.
+for user_dir in "$TARGET_PREFIX/drive_c/users"/*; do
+    [ -d "$user_dir" ] || continue
+    case "$(basename "$user_dir")" in Public|Default) continue ;; esac
+    if [ -L "$user_dir/Desktop" ]; then
+        rm -f "$user_dir/Desktop"
+        mkdir -p "$user_dir/Desktop"
+        echo "      Windows desktop decoupled from ~/Desktop: $user_dir/Desktop"
+    fi
+done
+
 # ------------------------------------------------------------------------------
 # 2. .NET Framework 4.8
 # ------------------------------------------------------------------------------
@@ -586,6 +600,22 @@ if [ "$SKIP_DESKTOP" -eq 0 ]; then
         rm -rf "$tmp_icon"
     fi
 
+    # Fallback: Wine's winemenubuilder writes icons it pulled out of the
+    # installer into the icon theme. Reuse the largest Rhino one it left behind
+    # rather than settling for a generic placeholder.
+    if [ "$ICON_NAME" = "applications-graphics" ]; then
+        wine_icon="$(find "$HOME/.local/share/icons/hicolor" -iname '*rhino*.png' 2>/dev/null \
+            | sort -t/ -k8 -n | tail -n1)"
+        if [ -n "$wine_icon" ]; then
+            cp -f "$wine_icon" "$ICON_DIR/rhino7.png"
+            ICON_NAME="rhino7"
+            echo "      Reused the icon Wine extracted for Rhino."
+        else
+            echo "      [INFO] icoutils not installed, using a generic icon."
+            echo "             For the real one: sudo dnf install icoutils, then rerun."
+        fi
+    fi
+
     cat > "$APPS_DIR/rhino-7.desktop" << EOF
 [Desktop Entry]
 Name=Rhinoceros 7
@@ -603,6 +633,26 @@ EOF
     command -v update-desktop-database >/dev/null 2>&1 && \
         update-desktop-database "$APPS_DIR" 2>/dev/null || true
     echo "      Desktop entry installed."
+
+    # Teach the system what a .3dm file is, so models open with a double click.
+    MIME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/mime"
+    mkdir -p "$MIME_DIR/packages"
+    cat > "$MIME_DIR/packages/rhino-3dm.xml" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-3dm">
+    <comment>Rhinoceros 3D model</comment>
+    <glob pattern="*.3dm"/>
+    <glob pattern="*.3dmbak"/>
+  </mime-type>
+</mime-info>
+EOF
+    if command -v update-mime-database >/dev/null 2>&1; then
+        update-mime-database "$MIME_DIR" 2>/dev/null || true
+        command -v xdg-mime >/dev/null 2>&1 && \
+            xdg-mime default rhino-7.desktop application/x-3dm 2>/dev/null || true
+        echo "      .3dm files associated with Rhino."
+    fi
 
     # COSMIC dock: favourites are a plain RON list of desktop entry ids under
     # com.system76.CosmicAppList, and the panel picks changes up on save.

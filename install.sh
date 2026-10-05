@@ -25,6 +25,7 @@
 #   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
 #   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
   --pin-dock              Pin Rhino to the COSMIC dock
+  --no-integration        No dock pin, no window rules, menu entry only
 #   --installer <PATH>      Run this Rhino 7 installer .exe inside the prefix
 #   --run                   Launch Rhino when finished
 #   -h, --help              Show this help
@@ -53,6 +54,7 @@ ENABLE_DXVK=0
 CUSTOM_DXVK_DIR=""
 COSMIC_RULES=0
 PIN_DOCK=0
+NO_INTEGRATION=0
 RHINO_INSTALLER=""
 RUN_RHINO=0
 WINE_VERSION="wine-11.18"
@@ -101,6 +103,7 @@ Options:
   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
   --pin-dock              Pin Rhino to the COSMIC dock
+  --no-integration        No dock pin, no window rules, menu entry only
   --installer <PATH>      Use this local Rhino 7 installer .exe
   --installer-url <URL>   Download the installer from here instead of the default
   --no-download           Never download the installer; only use --installer
@@ -132,6 +135,7 @@ while [[ $# -gt 0 ]]; do
         --dxvk-dir) CUSTOM_DXVK_DIR="$2"; ENABLE_DXVK=1; shift 2 ;;
         --cosmic-rules) COSMIC_RULES=1; shift ;;
         --pin-dock) PIN_DOCK=1; shift ;;
+        --no-integration) NO_INTEGRATION=1; COSMIC_RULES=0; PIN_DOCK=0; shift ;;
         --installer) RHINO_INSTALLER="$2"; shift 2 ;;
         --installer-url) RHINO_INSTALLER_URL="$2"; shift 2 ;;
         --no-download) NO_DOWNLOAD=1; shift ;;
@@ -206,6 +210,14 @@ detect_session() {
     case "${DESKTOP,,}" in
         *cosmic*) IS_COSMIC=1 ;;
     esac
+
+    # On COSMIC the desktop integration is the point of the exercise: a pinned,
+    # clickable icon and windows that are allowed to float. Both are listed in
+    # the plan and can be declined with --no-integration.
+    if [ "$IS_COSMIC" -eq 1 ] && [ "$NO_INTEGRATION" -eq 0 ]; then
+        COSMIC_RULES=1
+        PIN_DOCK=1
+    fi
 }
 
 detect_distro
@@ -447,6 +459,10 @@ show_plan() {
             echo -e "  Rhino 7       : download 293 MiB and install   ${CYAN}(5-15 min)${NC}"
         fi
     fi
+    local integration="menu entry, .3dm association"
+    [ "$PIN_DOCK" -eq 1 ] && integration="$integration, pinned to the dock"
+    [ "$COSMIC_RULES" -eq 1 ] && integration="$integration, COSMIC floating rule"
+    echo    "  Desktop       : $integration"
     echo    "  Log           : $LOG_FILE"
     echo ""
     echo -e "  Re-running is safe: finished steps are detected and skipped."
@@ -684,6 +700,10 @@ if [ -n "$RHINO_INSTALLER" ]; then
         if [ "$NON_INTERACTIVE" -eq 1 ]; then
             installer_flags=(-package -passive -norestart ENABLE_AUTOMATIC_UPDATES=0)
         fi
+        # winemenubuilder would turn the installer's Windows shortcuts into a
+        # second set of menu and desktop entries that bypass the launcher.
+        # This setup installs its own entry, so it is disabled for this call.
+        WINEDLLOVERRIDES="winemenubuilder.exe=d" \
         "$WINE_BIN" "$RHINO_INSTALLER" "${installer_flags[@]}" || {
             rc=$?
             [ "$rc" -eq 3010 ] || echo -e "${YELLOW}Installer exited with code $rc${NC}"
