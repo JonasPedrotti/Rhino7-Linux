@@ -153,6 +153,19 @@ if [ ! -d "$TARGET_PREFIX/drive_c" ]; then
     wait_wineserver
 else
     echo "[1/8] Existing prefix detected."
+    # Switching to a different Wine build leaves the prefix holding builtin DLLs
+    # from the previous one. Mixing versions breaks things in confusing ways
+    # (graphics init failures, missing ntdll), so refresh the prefix whenever the
+    # binary changed since the last deployment.
+    PREV_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/rhino7-linux/config"
+    if [ -f "$PREV_CONFIG" ]; then
+        PREV_WINE="$(sed -n 's/^RHINO_WINE="\(.*\)"$/\1/p' "$PREV_CONFIG")"
+        if [ -n "$PREV_WINE" ] && [ "$PREV_WINE" != "$WINE_BIN" ]; then
+            echo "      Wine changed ($PREV_WINE -> $WINE_BIN), refreshing the prefix..."
+            "$WINE_BIN" wineboot -u
+            wait_wineserver
+        fi
+    fi
 fi
 
 # Wine symlinks the prefix desktop to the real ~/Desktop, so every Windows

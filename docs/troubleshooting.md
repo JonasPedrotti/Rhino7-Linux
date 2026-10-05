@@ -47,6 +47,32 @@ WINEPREFIX=~/.wine-rhino7 wine reg delete 'HKCU\Software\Wine\AppDefaults\Rhino.
 The same applies to any other library set to plain `native`: use
 `native,builtin` unless you are certain the native DLL is really there.
 
+## After switching the Wine build
+
+**`wine: failed to load ...syswow64\ntdll.dll error c0000135`.** The Wine in use
+has no 32-bit support, but the prefix contains 32-bit code - the .NET Framework
+installs x86 and x64 side by side. A Wine built with only `--enable-win64`
+cannot start it. The build here uses `--enable-archs=i386,x86_64`; if you built
+it yourself with older instructions, rebuild:
+
+```bash
+rm -rf ~/Rhino7-Linux/build-wine
+./install.sh --build-wine
+```
+
+On Fedora this needs `mingw32-gcc` next to `mingw64-gcc`; `--deps` and
+`dnf builddep wine` pull both.
+
+**"An error occurred trying to initialize the graphics system" after using a
+different Wine.** A prefix updated by one Wine version and then run with another
+holds mismatched builtin DLLs. Refresh it with the Wine you intend to keep:
+
+```bash
+WINEPREFIX=~/.wine-rhino7 /path/to/wine wineboot -u
+```
+
+The setup does this by itself when it notices the Wine binary changed.
+
 ## Rhino starts and nothing happens
 
 The launcher runs with `WINEDEBUG=-all`, so a silent exit looks the same as

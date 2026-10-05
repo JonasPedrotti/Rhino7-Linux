@@ -263,7 +263,8 @@ install_build_deps() {
             # builddep pulls the exact set Fedora uses for its own wine package.
             $sudo_cmd dnf install -y dnf-plugins-core 2>/dev/null || true
             $sudo_cmd dnf builddep -y wine || \
-                $sudo_cmd dnf install -y gcc gcc-c++ make bison flex mingw64-gcc mingw64-gcc-c++ \
+                $sudo_cmd dnf install -y gcc gcc-c++ make bison flex \
+                    mingw64-gcc mingw64-gcc-c++ mingw32-gcc mingw32-gcc-c++ \
                     libX11-devel freetype-devel gnutls-devel libXext-devel libXcomposite-devel \
                     libXdamage-devel libXrandr-devel vulkan-loader-devel wayland-devel \
                     libxkbcommon-devel
@@ -553,10 +554,23 @@ build_patched_wine() {
         fi
     done < <(selected_patches)
 
+    # Both architectures, not just --enable-win64. The prefix holds 32-bit code
+    # (the .NET Framework installs x86 and x64 side by side), so a 64-bit only
+    # Wine cannot start it: "failed to load ...syswow64\ntdll.dll error
+    # c0000135". --enable-archs gives Wine's new WoW64 without needing 32-bit
+    # Unix libraries.
+    local configure_args=(--enable-archs=i386,x86_64 --prefix="$WINE_INSTALL_DIR" --without-capi)
+
+    # A build tree configured with different architectures cannot be reused.
+    if [ -f "$build_dir/config.log" ] && ! grep -q 'enable-archs=i386,x86_64' "$build_dir/config.log"; then
+        echo "Build tree was configured differently; starting it over..."
+        rm -rf "$build_dir"
+    fi
+
     mkdir -p "$build_dir"
     cd "$build_dir"
     echo "Configuring (prefix: $WINE_INSTALL_DIR)..."
-    "$src_dir/configure" --enable-win64 --prefix="$WINE_INSTALL_DIR" --without-capi
+    "$src_dir/configure" "${configure_args[@]}"
     echo "Compiling with $(nproc) jobs. This takes a while..."
     make -j"$(nproc)"
     make install
