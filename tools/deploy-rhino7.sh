@@ -39,6 +39,7 @@ INSTALL_EXTRAS=0
 ENABLE_DXVK=0
 CUSTOM_DXVK_DIR=""
 COSMIC_RULES=0
+PIN_DOCK=0
 SKIP_DESKTOP=0
 
 # Upper bound for the dotnet48 step. It normally needs 15 to 40 minutes; the
@@ -63,6 +64,7 @@ Options:
   --dxvk              Deploy DXVK DLLs into the prefix (optional, off by default)
   --dxvk-dir <PATH>   Directory holding 64-bit DXVK DLLs
   --cosmic-rules      Write a COSMIC auto-tiling exception for Rhino
+  --pin-dock          Pin Rhino to the COSMIC dock
   --skip-desktop      Skip the desktop entry and icon
   -h, --help          Show this help
 EOF
@@ -77,6 +79,7 @@ while [[ $# -gt 0 ]]; do
         --dxvk) ENABLE_DXVK=1; shift ;;
         --dxvk-dir) CUSTOM_DXVK_DIR="$2"; ENABLE_DXVK=1; shift 2 ;;
         --cosmic-rules) COSMIC_RULES=1; shift ;;
+        --pin-dock) PIN_DOCK=1; shift ;;
         --skip-desktop) SKIP_DESKTOP=1; shift ;;
         -h|--help) print_help; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -570,12 +573,35 @@ Terminal=false
 Type=Application
 Categories=Graphics;3DGraphics;Engineering;
 MimeType=application/x-3dm;
-StartupWMClass=Rhino.exe
+StartupWMClass=rhino.exe
 StartupNotify=true
 EOF
     command -v update-desktop-database >/dev/null 2>&1 && \
         update-desktop-database "$APPS_DIR" 2>/dev/null || true
     echo "      Desktop entry installed."
+
+    # COSMIC dock: favourites are a plain RON list of desktop entry ids under
+    # com.system76.CosmicAppList, and the panel picks changes up on save.
+    if [ "$PIN_DOCK" -eq 1 ]; then
+        dock_file="$HOME/.config/cosmic/com.system76.CosmicAppList/v1/favorites"
+        if [ ! -f "$dock_file" ]; then
+            mkdir -p "$(dirname "$dock_file")"
+            printf '[\n    "rhino-7",\n]\n' > "$dock_file"
+            echo "      Pinned to the COSMIC dock."
+        elif grep -q '"rhino-7"' "$dock_file"; then
+            echo "      Already pinned to the COSMIC dock."
+        else
+            cp -f "$dock_file" "$dock_file.bak"
+            # Insert before the closing bracket of the list.
+            sed -i '0,/^\s*\]\s*$/s//    "rhino-7",\n]/' "$dock_file"
+            if grep -q '"rhino-7"' "$dock_file"; then
+                echo "      Pinned to the COSMIC dock (previous list saved as favorites.bak)."
+            else
+                mv -f "$dock_file.bak" "$dock_file"
+                echo "      [WARN] Could not edit $dock_file; pin it by hand instead."
+            fi
+        fi
+    fi
 else
     echo "      Desktop integration skipped."
 fi

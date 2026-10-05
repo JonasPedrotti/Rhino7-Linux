@@ -24,6 +24,7 @@
 #   --dxvk                  Deploy DXVK (optional, Direct3D only)
 #   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
 #   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
+  --pin-dock              Pin Rhino to the COSMIC dock
 #   --installer <PATH>      Run this Rhino 7 installer .exe inside the prefix
 #   --run                   Launch Rhino when finished
 #   -h, --help              Show this help
@@ -51,6 +52,7 @@ INSTALL_EXTRAS=0
 ENABLE_DXVK=0
 CUSTOM_DXVK_DIR=""
 COSMIC_RULES=0
+PIN_DOCK=0
 RHINO_INSTALLER=""
 RUN_RHINO=0
 WINE_VERSION="wine-11.18"
@@ -98,6 +100,7 @@ Options:
   --dxvk                  Deploy DXVK (optional, Direct3D only)
   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
+  --pin-dock              Pin Rhino to the COSMIC dock
   --installer <PATH>      Use this local Rhino 7 installer .exe
   --installer-url <URL>   Download the installer from here instead of the default
   --no-download           Never download the installer; only use --installer
@@ -128,6 +131,7 @@ while [[ $# -gt 0 ]]; do
         --dxvk) ENABLE_DXVK=1; shift ;;
         --dxvk-dir) CUSTOM_DXVK_DIR="$2"; ENABLE_DXVK=1; shift 2 ;;
         --cosmic-rules) COSMIC_RULES=1; shift ;;
+        --pin-dock) PIN_DOCK=1; shift ;;
         --installer) RHINO_INSTALLER="$2"; shift 2 ;;
         --installer-url) RHINO_INSTALLER_URL="$2"; shift 2 ;;
         --no-download) NO_DOWNLOAD=1; shift ;;
@@ -578,6 +582,7 @@ deploy_cmd=("$REPO_DIR/tools/deploy-rhino7.sh" --prefix "$TARGET_PREFIX" --wine 
 [ "$ENABLE_DXVK" -eq 1 ] && deploy_cmd+=(--dxvk)
 [ -n "$CUSTOM_DXVK_DIR" ] && deploy_cmd+=(--dxvk-dir "$CUSTOM_DXVK_DIR")
 [ "$COSMIC_RULES" -eq 1 ] && deploy_cmd+=(--cosmic-rules)
+[ "$PIN_DOCK" -eq 1 ] && deploy_cmd+=(--pin-dock)
 "${deploy_cmd[@]}"
 step_done
 
