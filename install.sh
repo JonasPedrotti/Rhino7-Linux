@@ -20,7 +20,7 @@
 #   --patches <SET>         all (default) or core; see docs/patches.md
 #   --wayland               Also apply the experimental Wayland driver patch (16)
 #   --skip-dotnet           Do not install .NET Framework 4.8 / fonts
-#   --extras                Also install vcrun2019, msxml6, gdiplus
+#   --extras                Also install msxml6 and gdiplus
 #   --dxvk                  Deploy DXVK (optional, Direct3D only)
 #   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
 #   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
@@ -96,7 +96,7 @@ Options:
   --patches <SET>         all (default) or core; see docs/patches.md
   --wayland               Also apply the experimental Wayland driver patch (16)
   --skip-dotnet           Do not install .NET Framework 4.8 / fonts
-  --extras                Also install vcrun2019, msxml6, gdiplus
+  --extras                Also install msxml6 and gdiplus
   --dxvk                  Deploy DXVK (optional, Direct3D only)
   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
@@ -325,6 +325,12 @@ run_checks() {
         echo -e " $warn Prefix $TARGET_PREFIX does not exist yet"
     fi
 
+    if [ -f "$TARGET_PREFIX/drive_c/windows/system32/mfc140u.dll" ]; then
+        echo -e " $pass Visual C++ runtime with MFC (mfc140u.dll) present"
+    elif [ -d "$TARGET_PREFIX" ]; then
+        echo -e " $fail mfc140u.dll missing; RhinoCore.dll cannot load without it"
+    fi
+
     local rhino_found=0
     for d in "$TARGET_PREFIX/drive_c/Program Files/Rhino 7/System/Rhino.exe" \
              "$TARGET_PREFIX/drive_c/Program Files/Rhino 7 WIP/System/Rhino.exe"; do
@@ -432,7 +438,7 @@ show_plan() {
         echo "  Wine          : ${WINE_BIN:-system wine}"
     fi
     if [ "$SKIP_DOTNET" -eq 0 ]; then
-        echo -e "  .NET 4.8      : install into the prefix   ${CYAN}(15-40 min, mostly silent)${NC}"
+        echo -e "  Runtimes      : .NET 4.8, Visual C++ with MFC, core fonts   ${CYAN}(15-40 min, mostly silent)${NC}"
     fi
     if [ "$will_install_rhino" -eq 1 ]; then
         if [ -n "$RHINO_INSTALLER" ]; then

@@ -47,6 +47,29 @@ WINEPREFIX=~/.wine-rhino7 wine reg delete 'HKCU\Software\Wine\AppDefaults\Rhino.
 The same applies to any other library set to plain `native`: use
 `native,builtin` unless you are certain the native DLL is really there.
 
+## Rhino starts and nothing happens
+
+The launcher runs with `WINEDEBUG=-all`, so a silent exit looks the same as
+nothing happening. Make the errors visible:
+
+```bash
+WINEDEBUG=err+all,fixme-all rhino-7
+```
+
+**`err:module:import_dll Library mfc140u.dll (which is needed by ...
+RhinoCore.dll) not found`.** The Visual C++ runtime with MFC is missing. Wine
+does not ship it, and Rhino's installer does not reliably deliver it inside a
+prefix:
+
+```bash
+WINEPREFIX=~/.wine-rhino7 winetricks -q vcrun2019
+```
+
+The setup installs this by itself now; an older prefix needs the command above
+once. Follow-up noise such as `err:ole:start_rpcss`,
+`err:sync:RtlpWaitForCriticalSection ... wait timed out` and the McNeel Update
+Service message are consequences of the failed load, not separate problems.
+
 ## .NET Framework 4.8
 
 **It sits at `ndp48-x86-x64-allos-enu.exe /sfxlang:1027 /q /norestart` and nothing

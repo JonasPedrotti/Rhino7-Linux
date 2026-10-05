@@ -18,7 +18,7 @@
 #   --prefix <PATH>     Target Wine prefix (default: $RHINO_PREFIX or ~/.wine-rhino7)
 #   --wine <PATH>       Wine binary (default: $WINE or system wine)
 #   --skip-dotnet       Do not touch .NET Framework / fonts via winetricks
-#   --extras            Also install vcrun2019, msxml6 and gdiplus via winetricks
+#   --extras            Also install msxml6 and gdiplus via winetricks
 #   --dxvk              Deploy DXVK DLLs into the prefix (optional, off by default)
 #   --dxvk-dir <PATH>   Directory holding 64-bit DXVK DLLs
 #   --cosmic-rules      Write a COSMIC auto-tiling exception for Rhino
@@ -60,7 +60,7 @@ Options:
   --prefix <PATH>     Target Wine prefix (default: $RHINO_PREFIX or ~/.wine-rhino7)
   --wine <PATH>       Wine binary (default: $WINE or system wine)
   --skip-dotnet       Do not touch .NET Framework / fonts via winetricks
-  --extras            Also install vcrun2019, msxml6 and gdiplus via winetricks
+  --extras            Also install msxml6 and gdiplus via winetricks
   --dxvk              Deploy DXVK DLLs into the prefix (optional, off by default)
   --dxvk-dir <PATH>   Directory holding 64-bit DXVK DLLs
   --cosmic-rules      Write a COSMIC auto-tiling exception for Rhino
@@ -237,10 +237,34 @@ if [ "$SKIP_DOTNET" -eq 0 ] && command -v winetricks >/dev/null 2>&1; then
         }
 fi
 
-if [ "$INSTALL_EXTRAS" -eq 1 ] && command -v winetricks >/dev/null 2>&1; then
-    echo "      Installing extras: vcrun2019 msxml6 gdiplus..."
+# Visual C++ runtime including MFC. RhinoCore.dll imports mfc140u.dll, which
+# Wine does not provide and which Rhino's own installer fails to deliver inside
+# a prefix. Without it Rhino exits silently with
+# "err:module:import_dll Library mfc140u.dll ... not found".
+MFC_PATH="$TARGET_PREFIX/drive_c/windows/system32/mfc140u.dll"
+if [ "$SKIP_DOTNET" -eq 1 ]; then
+    :
+elif [ -f "$MFC_PATH" ]; then
+    echo "      Visual C++ runtime with MFC already present."
+elif command -v winetricks >/dev/null 2>&1; then
+    echo "      Installing the Visual C++ runtime (vcrun2019, provides mfc140u)..."
     env -u WINEDLLOVERRIDES WINE="$WINE_BIN" WINEPREFIX="$TARGET_PREFIX" \
-        winetricks -q vcrun2019 msxml6 gdiplus || true
+        timeout "${FONTS_TIMEOUT_MIN}m" winetricks -q vcrun2019 || \
+        echo "      [WARN] vcrun2019 did not finish cleanly." >&2
+    "$WINESERVER_BIN" -k 2>/dev/null || true
+    wait_wineserver
+    if [ -f "$MFC_PATH" ]; then
+        echo "      [PASS] mfc140u.dll in place."
+    else
+        echo "      [FAIL] mfc140u.dll is still missing, Rhino will not start." >&2
+        echo "      Retry by hand: WINEPREFIX='$TARGET_PREFIX' winetricks -q vcrun2019" >&2
+    fi
+fi
+
+if [ "$INSTALL_EXTRAS" -eq 1 ] && command -v winetricks >/dev/null 2>&1; then
+    echo "      Installing extras: msxml6 gdiplus..."
+    env -u WINEDLLOVERRIDES WINE="$WINE_BIN" WINEPREFIX="$TARGET_PREFIX" \
+        winetricks -q msxml6 gdiplus || true
     "$WINESERVER_BIN" -k 2>/dev/null || true
     wait_wineserver
 fi
