@@ -45,6 +45,9 @@ SKIP_DESKTOP=0
 # limit only exists so a genuinely stuck installer cannot block the run forever.
 DOTNET_TIMEOUT_MIN="${RHINO_DOTNET_TIMEOUT_MIN:-45}"
 
+# Core fonts are small; a long run here means a stalled download mirror.
+FONTS_TIMEOUT_MIN="${RHINO_FONTS_TIMEOUT_MIN:-10}"
+
 print_help() {
     cat << 'EOF'
 deploy-rhino7.sh - Prepare and configure a Wine prefix for Rhinoceros 7.
@@ -214,9 +217,21 @@ else
 fi
 
 if [ "$SKIP_DOTNET" -eq 0 ] && command -v winetricks >/dev/null 2>&1; then
-    echo "      Installing core fonts (missing fonts are the most common Rhino 7 crash)..."
+    # A dozen small archives from SourceForge, normally well under a minute.
+    # Output is kept visible because a dead mirror is the only thing that makes
+    # this slow, and then you want to see which file it is stuck on.
+    echo "      Installing core fonts, roughly 15 MB (missing fonts are the most"
+    echo "      common reason Rhino 7 dies on Wine)..."
     env -u WINEDLLOVERRIDES WINE="$WINE_BIN" WINEPREFIX="$TARGET_PREFIX" \
-        winetricks -q corefonts >/dev/null 2>&1 || true
+        timeout "${FONTS_TIMEOUT_MIN}m" winetricks -q corefonts || {
+            rc=$?
+            if [ "$rc" -eq 124 ]; then
+                echo "      [WARN] corefonts hit the ${FONTS_TIMEOUT_MIN} minute limit, probably a stalled mirror." >&2
+            else
+                echo "      [WARN] corefonts exited with code $rc." >&2
+            fi
+            echo "      Continuing; the Arial fallback below covers the font Rhino needs most." >&2
+        }
 fi
 
 if [ "$INSTALL_EXTRAS" -eq 1 ] && command -v winetricks >/dev/null 2>&1; then
