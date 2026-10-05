@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# rhino-7 - Launch and control Rhinoceros 7 under Wine.
+#
+# Tuned for Fedora and for Wayland sessions (COSMIC, GNOME, KDE) through XWayland.
+# Rhino 7 draws its viewports with OpenGL, so no Vulkan/DXVK layer is needed for
+# the 3D views. DXVK is optional and only affects Direct3D consumers.
+#
+# Usage:
+#   rhino-7                  open Rhino with the start page
+#   rhino-7 <file...>        open .3dm models (Linux or Windows paths)
+#   rhino-7 --fresh          restart wineserver first (clears stale licensing state)
+#   rhino-7 --stop           stop every process in the Rhino prefix
+#   rhino-7 --winecfg        open winecfg for the Rhino prefix
+#   rhino-7 --log [FILE]     launch with verbose Wine logging into FILE
+#
+# Environment:
+#   RHINO_PREFIX             Wine prefix (default: ~/.wine-rhino7 or saved config)
+#   WINE                     Path to the Wine binary
+#   RHINO_DXVK=1             Enable the optional DXVK configuration
+#   RHINO_GL_OVERRIDE=4.1    Force a Mesa OpenGL version if the driver underreports
+#   RHINO_GRAPHICS_DRIVER    x11 (default) or wayland
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+CONFIG_FILE="${CONFIG_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/rhino7-linux/config}"
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat << 'EOF'
+rhino-7 - Launch and control Rhinoceros 7 under Wine.
+
+Usage:
+  rhino-7                  open Rhino with the start page
+  rhino-7 <file...>        open .3dm models (Linux or Windows paths)
+  rhino-7 --fresh          restart wineserver first (clears stale licensing state)
+  rhino-7 --stop           stop every process in the Rhino prefix
+  rhino-7 --winecfg        open winecfg for the Rhino prefix
+  rhino-7 --log [FILE]     launch with verbose Wine logging into FILE
+
+Environment:
+  RHINO_PREFIX             Wine prefix (default: ~/.wine-rhino7 or saved config)
+  WINE                     Path to the Wine binary
+  RHINO_DXVK=1             Enable the optional DXVK configuration
+  RHINO_GL_OVERRIDE=4.1    Force a Mesa OpenGL version if the driver underreports
+  RHINO_GRAPHICS_DRIVER    x11 (default) or wayland
+EOF
+    exit 0
+fi
+
+# Explicit environment wins over the saved deployment config.
+ENV_RHINO_PREFIX="${RHINO_PREFIX:-}"
+ENV_WINEPREFIX="${WINEPREFIX:-}"
+ENV_WINE="${WINE:-}"
+
+if [ -f "$CONFIG_FILE" ]; then
+    # shellcheck disable=SC1090
+    . "$CONFIG_FILE"
+fi
+
+RHINO_PREFIX="${ENV_RHINO_PREFIX:-${RHINO_PREFIX:-}}"
+WINEPREFIX="${ENV_WINEPREFIX:-${WINEPREFIX:-${RHINO_PREFIX:-}}}"
+WINE="${ENV_WINE:-${WINE:-${RHINO_WINE:-}}}"
+
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/rhino7-linux"
+find_asset() {
+    local name="$1" candidate
+    for candidate in \
+        "$DATA_DIR/$name" \
+        "$SCRIPT_DIR/$name" \
+        "$SCRIPT_DIR/tools/$name" \
+        "$SCRIPT_DIR/../tools/$name"; do
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+}
+
+export WINEPREFIX="${WINEPREFIX:-$HOME/.wine-rhino7}"
+
+# Wine binary resolution
+WINE_BIN="${WINE:-${RHINO_WINE:-}}"
+if [ -z "$WINE_BIN" ]; then
+    for candidate in \
+        "${WINE_BUILD:-}/wine" \
+        "$HOME/.local/share/wine-rhino7/bin/wine" \
+        "/opt/wine-rhino7/bin/wine" \
+        "$SCRIPT_DIR/../build-wine/wine"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            WINE_BIN="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$WINE_BIN" ]; then
+    if command -v wine >/dev/null 2>&1; then
+        WINE_BIN="$(command -v wine)"
+    else
+        echo "error: no Wine binary found. Set WINE=/path/to/wine or run ./install.sh" >&2
+        exit 1
+    fi
+fi
+
+# wineserver resolution
+WINESERVER_BIN="${RHINO_WINESERVER:-}"
+if [ -z "$WINESERVER_BIN" ] || [ ! -x "$WINESERVER_BIN" ]; then
+    WINESERVER_BIN=""
+    for candidate in \
+        "$(dirname "$WINE_BIN")/wineserver" \
+        "$(dirname "$WINE_BIN")/server/wineserver" \
+        "$(dirname "$WINE_BIN")/../server/wineserver"; do
+        if [ -x "$candidate" ]; then
+            WINESERVER_BIN="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$WINESERVER_BIN" ]; then
+    WINESERVER_BIN="$(command -v wineserver 2>/dev/null || echo wineserver)"
+fi
+
+# Rhino 7 installs into "Rhino 7"; WIP builds use "Rhino 7 WIP".
+RHINO_DIR=""
+for candidate in \
+    "${RHINO_SYSTEM_DIR:-}" \
+    "$WINEPREFIX/drive_c/Program Files/Rhino 7/System" \
+    "$WINEPREFIX/drive_c/Program Files/Rhino 7 WIP/System"; do
+    if [ -n "$candidate" ] && [ -d "$candidate" ]; then
+        RHINO_DIR="$candidate"
+        break
+    fi
+done
+
+WINE_LOG=""
+
+case "${1:-}" in
+    --fresh)
+        echo "Restarting wineserver for a clean licensing/http state..."
+        WINEPREFIX="$WINEPREFIX" "$WINESERVER_BIN" -k 2>/dev/null || true
+        WINEPREFIX="$WINEPREFIX" "$WINESERVER_BIN" -w 2>/dev/null || true
+        shift
+        ;;
+    --stop)
+        echo "Stopping Rhino prefix ($WINEPREFIX)..."
+        WINEPREFIX="$WINEPREFIX" "$WINESERVER_BIN" -k
+        WINEPREFIX="$WINEPREFIX" "$WINESERVER_BIN" -w 2>/dev/null || true
+        echo "Stopped."
+        exit 0
+        ;;
+    --winecfg)
+        exec env WINEPREFIX="$WINEPREFIX" "$WINE_BIN" winecfg
+        ;;
+    --log)
+        shift
+        WINE_LOG="${1:-${XDG_CACHE_HOME:-$HOME/.cache}/rhino7-linux/logs/rhino-$(date +%Y%m%d-%H%M%S).log}"
+        [ $# -gt 0 ] && shift
+        mkdir -p "$(dirname "$WINE_LOG")"
+        ;;
+esac
+
+[ -x "$WINE_BIN" ] || { echo "error: Wine is not executable at $WINE_BIN" >&2; exit 1; }
+if [ -z "$RHINO_DIR" ]; then
+    echo "error: Rhino 7 not found in $WINEPREFIX" >&2
+    echo "       expected: $WINEPREFIX/drive_c/Program Files/Rhino 7/System/Rhino.exe" >&2
+    echo "       install it with: ./install.sh --installer /path/to/rhino_installer.exe" >&2
+    exit 1
+fi
+RHINO_WIN_DIR="${RHINO_DIR#"$WINEPREFIX/drive_c/"}"
+if [ "$RHINO_WIN_DIR" != "$RHINO_DIR" ]; then
+    RHINO_WIN_EXE="C:\\${RHINO_WIN_DIR//\//\\}\\Rhino.exe"
+else
+    # RHINO_SYSTEM_DIR points outside the prefix; hand Wine the unix path.
+    RHINO_WIN_EXE="$RHINO_DIR/Rhino.exe"
+fi
+
+# Translate Linux paths and file:// URIs into Windows paths on the Z: drive.
+args=()
+for arg in "$@"; do
+    if [[ "$arg" =~ ^file:// ]]; then
+        arg="${arg#file://}"
+    fi
+    decoded_arg=$(printf '%b' "${arg//%/\\x}")
+    if [ -e "$decoded_arg" ]; then
+        abs_arg="$(readlink -f "$decoded_arg")"
+        args+=("Z:${abs_arg//\//\\}")
+    else
+        args+=("$arg")
+    fi
+done
+
+# ------------------------------------------------------------------------------
+# Session and graphics driver
+# ------------------------------------------------------------------------------
+# Rhino 7 is MFC plus .NET Framework with MDI viewports, floating toolbars and
+# owner drawn popups. Wine's X11 driver handles all of that; winewayland.drv
+# still lacks pieces Rhino relies on, so run through XWayland on COSMIC.
+export RHINO_GRAPHICS_DRIVER="${RHINO_GRAPHICS_DRIVER:-x11}"
+if [ "$RHINO_GRAPHICS_DRIVER" = "x11" ]; then
+    if [ -z "${DISPLAY:-}" ]; then
+        echo "error: DISPLAY is empty, so XWayland does not appear to be running." >&2
+        echo "       Enable XWayland in your session, or set" >&2
+        echo "       RHINO_GRAPHICS_DRIVER=wayland to try the native Wine driver." >&2
+        exit 1
+    fi
+    export DISPLAY
+fi
+
+# Keep the cursor free across monitors and avoid sticky drags when a viewport is
+# maximized on a secondary display.
+export WINE_DISABLE_CLIP_CURSOR=1
+
+# ------------------------------------------------------------------------------
+# OpenGL (Rhino 7 display pipeline)
+# ------------------------------------------------------------------------------
+# Rhino 7 needs an OpenGL 4.1 core context. Mesa reports 4.6 on all supported
+# hardware, so no override is needed by default. Set RHINO_GL_OVERRIDE=4.1 when
+# a driver underreports its version and Rhino drops to software display.
+if [ -n "${RHINO_GL_OVERRIDE:-}" ]; then
+    export MESA_GL_VERSION_OVERRIDE="$RHINO_GL_OVERRIDE"
+    export MESA_GLSL_VERSION_OVERRIDE="${RHINO_GLSL_OVERRIDE:-410}"
+fi
+
+# Shader disk caches shorten first use stalls (Mesa and the NVIDIA driver).
+export __GL_SHADER_DISK_CACHE=1
+export __GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1
+
+# ------------------------------------------------------------------------------
+# Optional DXVK (Direct3D only, not used by Rhino's viewports)
+# ------------------------------------------------------------------------------
+if [ "${RHINO_DXVK:-0}" = "1" ]; then
+    dxvk_conf_path="${RHINO_DXVK_CONF:-$(find_asset dxvk-rhino7.conf || true)}"
+    if [ -n "${dxvk_conf_path:-}" ] && [ -f "$dxvk_conf_path" ]; then
+        export DXVK_CONFIG_FILE="$dxvk_conf_path"
+    fi
+    export DXVK_STATE_CACHE=1
+    export DXVK_STATE_CACHE_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/dxvk"
+    mkdir -p "$DXVK_STATE_CACHE_PATH"
+fi
+
+# ------------------------------------------------------------------------------
+# OpenMP (OpenNURBS meshing, booleans, intersections)
+# ------------------------------------------------------------------------------
+export OMP_PROC_BIND="${OMP_PROC_BIND:-spread}"
+export OMP_PLACES="${OMP_PLACES:-cores}"
+export OMP_DYNAMIC="${OMP_DYNAMIC:-false}"
+# PASSIVE keeps idle workers off the CPU instead of spinning at 100 percent.
+export OMP_WAIT_POLICY="${OMP_WAIT_POLICY:-PASSIVE}"
+
+# ------------------------------------------------------------------------------
+# Kernel synchronisation
+# ------------------------------------------------------------------------------
+if [ -e "/dev/ntsync" ]; then
+    export WINENTSYNC="${WINENTSYNC:-1}"
+fi
+
+# Cloud Zoo sign in opens the Linux default browser. A host LD_PRELOAD
+# (jemalloc, gamemode, overlays) frequently kills that child process.
+unset LD_PRELOAD
+
+# vcomp140=builtin: Wine's OpenMP, with the 64-bit dynamic loop patch applied.
+# mscoree and gdiplus stay native so the real .NET Framework 4.8 is used.
+export WINEDLLOVERRIDES="vcomp140=builtin;mscoree=native;gdiplus=native;${WINEDLLOVERRIDES:-}"
+
+cd "$RHINO_DIR"
+
+if [ -n "$WINE_LOG" ]; then
+    export WINEDEBUG="${WINEDEBUG:-+loaddll,+seh,warn+all}"
+    echo "Logging Wine output to $WINE_LOG"
+    exec "$WINE_BIN" "$RHINO_WIN_EXE" "${args[@]}" >"$WINE_LOG" 2>&1
+fi
+
+export WINEDEBUG="${WINEDEBUG:--all}"
+exec "$WINE_BIN" "$RHINO_WIN_EXE" "${args[@]}"

@@ -1,0 +1,3 @@
+# Everything is consumed on Linux: keep LF in the repo and in every checkout,
+# so the shell scripts and the Wine patches are never mangled by a Windows clone.
+* text=auto eol=lf

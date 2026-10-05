@@ -1,0 +1,18 @@
+# Temporary / editor files
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Build artifacts
+build-wine/
+wine-src/
+*.o
+*.obj
+
+# Generated launcher symlink
+/rhino-7
+
+# Logs
+*.log
+logs/
