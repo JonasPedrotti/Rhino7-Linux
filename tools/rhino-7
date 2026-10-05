@@ -258,8 +258,10 @@ fi
 unset LD_PRELOAD
 
 # vcomp140=builtin: Wine's OpenMP, with the 64-bit dynamic loop patch applied.
-# mscoree and gdiplus stay native so the real .NET Framework 4.8 is used.
-export WINEDLLOVERRIDES="vcomp140=builtin;mscoree=native;gdiplus=native;${WINEDLLOVERRIDES:-}"
+# mscoree=native: the real .NET Framework 4.8, not Wine Mono.
+# gdiplus is deliberately not listed: forcing native without a native DLL in the
+# prefix makes Wine refuse the builtin fallback. The prefix registry decides.
+export WINEDLLOVERRIDES="vcomp140=builtin;mscoree=native;${WINEDLLOVERRIDES:-}"
 
 cd "$RHINO_DIR"
 

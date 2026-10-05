@@ -137,6 +137,40 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Everything from here is mirrored into a log, so a failed run leaves something
+# to read or paste into a report without having to reproduce it.
+LOG_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/rhino7-linux/logs/install-$(date +%Y%m%d-%H%M%S).log"
+if [ "$CHECK_ONLY" -eq 0 ]; then
+    mkdir -p "$(dirname "$LOG_FILE")"
+    exec > >(tee -a "$LOG_FILE") 2>&1
+fi
+
+RUN_START="$(date +%s)"
+STEP_START="$RUN_START"
+
+step() {
+    STEP_START="$(date +%s)"
+    echo ""
+    if [ -n "${2:-}" ]; then
+        echo -e "${BOLD}${BLUE}==> $1${NC} ${CYAN}($2)${NC}"
+    else
+        echo -e "${BOLD}${BLUE}==> $1${NC}"
+    fi
+}
+
+find_rhino_exe() {
+    for d in "$TARGET_PREFIX/drive_c/Program Files/Rhino 7/System/Rhino.exe" \
+             "$TARGET_PREFIX/drive_c/Program Files/Rhino 7 WIP/System/Rhino.exe"; do
+        [ -f "$d" ] && { echo "$d"; return 0; }
+    done
+    return 1
+}
+
+step_done() {
+    local d=$(( $(date +%s) - STEP_START ))
+    printf "    %bdone%b in %dm %02ds\n" "$GREEN" "$NC" "$((d / 60))" "$((d % 60))"
+}
+
 detect_distro() {
     DISTRO_ID="unknown"; DISTRO_NAME="Unknown Linux"; DISTRO_FAMILY="unknown"
     if [ -f /etc/os-release ]; then
@@ -309,7 +343,122 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
     exit 0
 fi
 
-[ "$INSTALL_DEPS" -eq 1 ] && install_runtime_deps
+# ------------------------------------------------------------------------------
+# Preflight: fail before the long steps, not after them
+# ------------------------------------------------------------------------------
+preflight() {
+    local problems=0 missing="" t
+
+    step "Checking prerequisites"
+
+    if [ "$INSTALL_DEPS" -eq 0 ]; then
+        for t in wine winetricks cabextract; do
+            command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
+        done
+        if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+            missing="$missing curl"
+        fi
+        if [ -n "$missing" ]; then
+            echo -e " ${RED}missing${NC}  tools:$missing"
+            echo -e "          fix: ${CYAN}./install.sh --deps${NC}  (or install them yourself)"
+            problems=$((problems + 1))
+        else
+            echo -e " ${GREEN}ok${NC}       wine, winetricks, cabextract and a downloader are present"
+        fi
+    fi
+
+    # The prefix ends up around 4 GB with .NET and Rhino, plus the cached installer.
+    local avail_mb
+    avail_mb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print int($4/1024)}')"
+    if [ -n "$avail_mb" ] && [ "$avail_mb" -lt 6000 ]; then
+        echo -e " ${RED}low disk${NC} ${avail_mb} MB free in $HOME, about 6000 MB are needed"
+        problems=$((problems + 1))
+    else
+        echo -e " ${GREEN}ok${NC}       disk: ${avail_mb:-?} MB free in $HOME"
+    fi
+
+    if [ "$BUILD_WINE" -eq 1 ]; then
+        local repo_mb
+        repo_mb="$(df -Pk "$REPO_DIR" 2>/dev/null | awk 'NR==2{print int($4/1024)}')"
+        if [ -n "$repo_mb" ] && [ "$repo_mb" -lt 10000 ]; then
+            echo -e " ${YELLOW}warn${NC}     building Wine needs about 10 GB; ${repo_mb} MB free here"
+        fi
+    fi
+
+    if command -v glxinfo >/dev/null 2>&1; then
+        local glver renderer
+        glver="$(glxinfo -B 2>/dev/null | grep -m1 'Max core profile version' | sed 's/.*: *//')"
+        renderer="$(glxinfo -B 2>/dev/null | grep -m1 -i 'OpenGL renderer' | sed 's/.*: *//')"
+        if [ -n "$glver" ] && ! awk -v v="$glver" 'BEGIN{exit !(v+0 >= 4.1)}'; then
+            echo -e " ${RED}opengl${NC}   core profile $glver, Rhino 7 needs 4.1"
+            problems=$((problems + 1))
+        elif echo "$renderer" | grep -qiE 'llvmpipe|softpipe|swrast'; then
+            echo -e " ${YELLOW}warn${NC}     software OpenGL ($renderer)"
+            echo -e "          Rhino will start but the viewports will be slow. In a VM,"
+            echo -e "          enable 3D acceleration on the guest for usable performance."
+        else
+            echo -e " ${GREEN}ok${NC}       OpenGL $glver on ${renderer:-unknown}"
+        fi
+    fi
+
+    if [ "$problems" -gt 0 ]; then
+        echo ""
+        echo -e "${RED}Stopping here: $problems problem(s) above would only surface later.${NC}" >&2
+        exit 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Plan: say what will happen, ask once, then run without further questions
+# ------------------------------------------------------------------------------
+PLAN_CONFIRMED=0
+
+show_plan() {
+    local will_install_rhino=1
+    find_rhino_exe >/dev/null 2>&1 && will_install_rhino=0
+    [ "$NO_DOWNLOAD" -eq 1 ] && [ -z "$RHINO_INSTALLER" ] && will_install_rhino=0
+
+    echo ""
+    echo -e "${BOLD}Plan${NC}"
+    echo    "  Prefix        : $TARGET_PREFIX"
+    [ "$INSTALL_DEPS" -eq 1 ] && echo "  Packages      : install via $DISTRO_FAMILY package manager"
+    if [ "$BUILD_WINE" -eq 1 ]; then
+        echo "  Wine          : build patched $WINE_VERSION into $WINE_INSTALL_DIR   (20-60 min)"
+    else
+        echo "  Wine          : ${WINE_BIN:-system wine}"
+    fi
+    if [ "$SKIP_DOTNET" -eq 0 ]; then
+        echo -e "  .NET 4.8      : install into the prefix   ${CYAN}(15-40 min, mostly silent)${NC}"
+    fi
+    if [ "$will_install_rhino" -eq 1 ]; then
+        if [ -n "$RHINO_INSTALLER" ]; then
+            echo "  Rhino 7       : install from $RHINO_INSTALLER   (5-10 min)"
+        else
+            echo -e "  Rhino 7       : download 293 MiB and install   ${CYAN}(5-15 min)${NC}"
+        fi
+    fi
+    echo    "  Log           : $LOG_FILE"
+    echo ""
+    echo -e "  Re-running is safe: finished steps are detected and skipped."
+
+    if [ "$NON_INTERACTIVE" -eq 0 ]; then
+        echo ""
+        read -rp "Start? [Y/n] " plan_answer
+        if [[ ! "${plan_answer:-y}" =~ ^[Yy] ]]; then
+            echo "Nothing was changed."
+            exit 0
+        fi
+    fi
+    PLAN_CONFIRMED=1
+}
+
+preflight
+
+if [ "$INSTALL_DEPS" -eq 1 ]; then
+    step "Installing packages"
+    install_runtime_deps
+    step_done
+fi
 
 # ------------------------------------------------------------------------------
 # Wine resolution
@@ -392,25 +541,33 @@ build_patched_wine() {
     echo -e "${GREEN}Built: $("$WINE_BIN" --version)${NC}"
 }
 
-if [ "$BUILD_WINE" -eq 1 ]; then
-    build_patched_wine
-else
+# Wine is resolved before the plan is shown, so the plan can name the binary.
+if [ "$BUILD_WINE" -eq 0 ]; then
     resolve_wine
     if [ -z "$WINE_BIN" ]; then
         echo -e "${RED}Error: no Wine binary found.${NC}" >&2
         echo "Install it with ./install.sh --deps, or build the patched Wine with --build-wine." >&2
         exit 1
     fi
-    echo -e "\n${BOLD}${BLUE}[Wine]${NC} Using ${GREEN}$WINE_BIN${NC} ($("$WINE_BIN" --version 2>/dev/null))"
-    echo -e "       Stock Wine runs Rhino 7, but the patches in patches/ fix black menu"
-    echo -e "       borders, panel surfaces and multi-monitor viewport maximizing."
-    echo -e "       Build them in with: ${CYAN}./install.sh --build-wine${NC}"
+fi
+
+show_plan
+
+if [ "$BUILD_WINE" -eq 1 ]; then
+    step "Building patched Wine" "20-60 min"
+    build_patched_wine
+    step_done
+else
+    echo ""
+    echo -e "${BOLD}Wine${NC}: $WINE_BIN ($("$WINE_BIN" --version 2>/dev/null))"
+    echo -e "      Unpatched. The patches fix black menu borders, missing panels and"
+    echo -e "      viewports vanishing on a second monitor: ${CYAN}./install.sh --build-wine${NC}"
 fi
 
 # ------------------------------------------------------------------------------
 # Prefix deployment
 # ------------------------------------------------------------------------------
-echo -e "\n${BOLD}${BLUE}[Prefix] Configuring $TARGET_PREFIX${NC}"
+step "Setting up the Wine prefix" "15-40 min on a first run"
 export WINE="$WINE_BIN"
 export WINEPREFIX="$TARGET_PREFIX"
 export RHINO_PREFIX="$TARGET_PREFIX"
@@ -422,20 +579,13 @@ deploy_cmd=("$REPO_DIR/tools/deploy-rhino7.sh" --prefix "$TARGET_PREFIX" --wine 
 [ -n "$CUSTOM_DXVK_DIR" ] && deploy_cmd+=(--dxvk-dir "$CUSTOM_DXVK_DIR")
 [ "$COSMIC_RULES" -eq 1 ] && deploy_cmd+=(--cosmic-rules)
 "${deploy_cmd[@]}"
+step_done
 
 # ------------------------------------------------------------------------------
 # Rhino installation
 # ------------------------------------------------------------------------------
 WINESERVER_BIN="$(dirname "$WINE_BIN")/wineserver"
 [ -x "$WINESERVER_BIN" ] || WINESERVER_BIN="$(command -v wineserver 2>/dev/null || echo wineserver)"
-
-find_rhino_exe() {
-    for d in "$TARGET_PREFIX/drive_c/Program Files/Rhino 7/System/Rhino.exe" \
-             "$TARGET_PREFIX/drive_c/Program Files/Rhino 7 WIP/System/Rhino.exe"; do
-        [ -f "$d" ] && { echo "$d"; return 0; }
-    done
-    return 1
-}
 
 verify_sha256() {
     local expected="$1" file="$2"
@@ -462,9 +612,10 @@ download_installer() {
         return 0
     fi
 
-    echo -e "Installer source : ${CYAN}$RHINO_INSTALLER_URL${NC}"
-    echo -e "Download size    : 293 MiB, cached in $cache_dir"
-    if [ "$NON_INTERACTIVE" -eq 0 ]; then
+    echo -e "    source: ${CYAN}$RHINO_INSTALLER_URL${NC}"
+    echo -e "    293 MiB, cached in $cache_dir, resumes if interrupted"
+    # The plan was already confirmed, so this does not ask a second time.
+    if [ "$NON_INTERACTIVE" -eq 0 ] && [ "$PLAN_CONFIRMED" -eq 0 ]; then
         read -rp "Download the Rhino 7 installer now? [Y/n] " dl_answer
         if [[ ! "${dl_answer:-y}" =~ ^[Yy] ]]; then
             echo "Skipping the download."
@@ -503,7 +654,7 @@ download_installer() {
     RHINO_INSTALLER="$target"
 }
 
-echo -e "\n${BOLD}${BLUE}[Rhino] Application status${NC}"
+step "Installing Rhino 7" "5-15 min"
 
 if [ -z "$RHINO_INSTALLER" ] && ! find_rhino_exe >/dev/null; then
     if [ "$NO_DOWNLOAD" -eq 1 ]; then
@@ -535,33 +686,42 @@ if [ -n "$RHINO_INSTALLER" ]; then
     fi
 fi
 
-if rhino_exe="$(find_rhino_exe)"; then
-    echo -e " ${GREEN}[PASS]${NC} Rhino 7 detected: $rhino_exe"
-else
-    echo -e " ${YELLOW}[INFO]${NC} Rhino 7 is not installed in this prefix yet."
-    echo -e "        Let the script fetch the public installer:"
-    echo -e "        ${CYAN}./install.sh -y${NC}"
-    echo -e "        or point it at an installer you already have:"
-    echo -e "        ${CYAN}./install.sh --installer /path/to/rhino_en-us_7.x.exe${NC}"
-fi
+step_done
 
 ln -sf "tools/rhino-7" "$REPO_DIR/rhino-7" 2>/dev/null || true
 
 run_checks
 
-echo -e "\n${BOLD}${GREEN}==========================================================================${NC}"
-echo -e "${BOLD}${GREEN}  Setup complete${NC}"
-echo -e "${BOLD}${GREEN}==========================================================================${NC}"
-echo -e " Prefix   : ${BOLD}$TARGET_PREFIX${NC}"
-echo -e " Wine     : ${BOLD}$WINE_BIN${NC}"
-echo -e " Launcher : ${BOLD}rhino-7${NC}"
-echo "=========================================================================="
+TOTAL=$(( $(date +%s) - RUN_START ))
+echo ""
+if rhino_exe="$(find_rhino_exe)"; then
+    echo -e "${BOLD}${GREEN}Ready.${NC} Total time: $((TOTAL / 60))m $((TOTAL % 60))s"
+    echo ""
+    echo -e "  Start Rhino      ${BOLD}rhino-7${NC}            (also in your application menu)"
+    echo -e "  Open a model     ${BOLD}rhino-7 model.3dm${NC}"
+    echo -e "  If it misbehaves ${BOLD}rhino-7 --fresh${NC}    then ${BOLD}rhino-7 --log${NC}"
+    echo ""
+    echo -e "  On the first start Rhino asks for your license or starts the evaluation."
+    echo -e "  Cloud Zoo sign-in opens your normal browser."
+else
+    echo -e "${BOLD}${YELLOW}Not finished:${NC} the prefix is ready, but Rhino 7 is not installed."
+    echo ""
+    echo -e "  Fetch the public installer   ${CYAN}./install.sh -y${NC}"
+    echo -e "  or use your own              ${CYAN}./install.sh --installer /path/to/rhino_7.exe${NC}"
+fi
+echo ""
+echo -e "  Prefix $TARGET_PREFIX   Wine $WINE_BIN"
+echo -e "  Log    $LOG_FILE"
+echo -e "  Stuck? docs/troubleshooting.md"
 
 if [ "$RUN_RHINO" -eq 1 ]; then
     exec "$REPO_DIR/tools/rhino-7"
 elif find_rhino_exe >/dev/null && [ "$NON_INTERACTIVE" -eq 0 ]; then
+    echo ""
     read -rp "Launch Rhino now? [Y/n] " answer
     if [[ "${answer:-y}" =~ ^[Yy] ]]; then
         exec "$REPO_DIR/tools/rhino-7"
     fi
 fi
+
+find_rhino_exe >/dev/null || [ "$NO_DOWNLOAD" -eq 1 ] || exit 1

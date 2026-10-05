@@ -25,6 +25,28 @@ match, which is the point.
 **404 or a dead link.** McNeel rotates the `dujour` paths. Get the current
 Rhino 7 download from your McNeel account and pass it with `--installer`.
 
+## The Rhino installer
+
+**`Installer exited with code 126` and `err:module:import_dll Library
+gdiplus.dll ... not found`.** A DLL override forces `gdiplus` to `native` while
+no native `gdiplus.dll` exists in the prefix. Wine then refuses to fall back to
+its builtin, and the installer's own UI (`BundleUI.dll`) cannot load. Repair the
+prefix by rerunning the setup, which now removes a bad override:
+
+```bash
+git pull && ./install.sh -y
+```
+
+Or do it by hand:
+
+```bash
+WINEPREFIX=~/.wine-rhino7 wine reg delete 'HKCU\Software\Wine\DllOverrides' /v gdiplus /f
+WINEPREFIX=~/.wine-rhino7 wine reg delete 'HKCU\Software\Wine\AppDefaults\Rhino.exe\DllOverrides' /v gdiplus /f
+```
+
+The same applies to any other library set to plain `native`: use
+`native,builtin` unless you are certain the native DLL is really there.
+
 ## .NET Framework 4.8
 
 **It sits at `ndp48-x86-x64-allos-enu.exe /sfxlang:1027 /q /norestart` and nothing

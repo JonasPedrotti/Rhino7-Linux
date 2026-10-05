@@ -260,12 +260,12 @@ Windows Registry Editor Version 5.00
 "vcomp140"="builtin"
 ; The real .NET Framework 4.8 installed above, not Wine Mono.
 "mscoree"="native"
-"gdiplus"="native"
+GDIPLUS_GLOBAL
 
 [HKEY_CURRENT_USER\Software\Wine\AppDefaults\Rhino.exe\DllOverrides]
 "vcomp140"="builtin"
 "mscoree"="native"
-"gdiplus"="native"
+GDIPLUS_APP
 "d3dcompiler_47"="native,builtin"
 
 ; Force the X11 driver. Rhino's floating toolbars, MDI viewports and owner drawn
@@ -280,6 +280,17 @@ Windows Registry Editor Version 5.00
 "CurrentBuildNumber"="19045"
 "ProductName"="Windows 10 Pro"
 REG_EOF
+# gdiplus is only safe as "native" when a native DLL actually exists in the
+# prefix. Forcing native without one makes Wine refuse the builtin fallback, and
+# the Rhino installer dies with "gdiplus.dll not found" (exit code 126). The
+# "=-" form also removes a bad override left by an earlier run.
+if [ -f "$TARGET_PREFIX/drive_c/windows/system32/gdiplus.dll" ]; then
+    gdiplus_line='"gdiplus"="native,builtin"'
+else
+    gdiplus_line='"gdiplus"=-'
+fi
+sed -i "s|^GDIPLUS_GLOBAL$|$gdiplus_line|; s|^GDIPLUS_APP$|$gdiplus_line|" "$REG_FILE"
+
 "$WINE_BIN" regedit /S "$REG_FILE"
 rm -f "$REG_FILE"
 
