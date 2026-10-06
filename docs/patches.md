@@ -22,7 +22,7 @@ OpenMP fixes are what actually change the Rhino 7 experience.
 
 What has been checked for this repository:
 
-- All 18 patches apply to a clean `wine-11.18` tree, individually and as a
+- All 19 patches apply to a clean `wine-11.18` tree, individually and as a
   series in numeric order, with no rejects (`patch -p1 --dry-run` and a real
   run).
 - None of the kept patches references a symbol introduced by the three dropped
@@ -37,8 +37,8 @@ and report back what breaks.
 
 `install.sh --patches <set>` selects the group:
 
-- **`core`** (13 patches): 01 02 03 04 05 08 09 10 12 14 19 20 21
-- **`all`** (default, 17 patches): core plus licensing (13, 15) and
+- **`core`** (14 patches): 01 02 03 04 05 08 09 10 12 14 17 19 20 21
+- **`all`** (default, 18 patches): core plus licensing (13, 15) and
   Direct3D (11, 18)
 - **`--wayland`** additionally applies 16, the experimental `winewayland.drv`
   patch. Do not expect Rhino 7 to be usable on the native Wayland driver; the
@@ -60,6 +60,7 @@ These address problems that show up in a plain Rhino 7 session.
 | 10 | `user32` | Adds the Per-Monitor DPI v2 dialog APIs. Rhino's Options and Document Properties dialogs call them; on mixed DPI setups the dialogs otherwise misplace their controls. |
 | 12 | `wbemprox` | Aggregates a free-threaded marshaler into `IWbemServices`. Rhino's licensing and diagnostics run WMI queries from multiple COM apartments and get `E_NOINTERFACE` without it. |
 | 14 | `comctl32` | Adds `TaskDialog` / `TaskDialogIndirect`. Rhino uses task dialogs for license and crash prompts, which silently vanish on the stub. |
+| 17 | `user32` / `win32u` / `winex11.drv` / `server` | Compositing and restacking for owned `WS_EX_LAYERED` windows, plus unsuffixed 64-bit `GetWindowLongPtr` / `SetWindowLongPtr` exports. Upstream wrote it for the Rhino 9 splash, and this repository dropped it for that reason - wrongly: Rhino 7's tooltips and floating popups are layered windows too, and they render black without it. |
 | 19 | `win32u` | Excludes child windows from monitor offset maths in `get_maximized_rect` / `get_min_max_info`. This is the fix for an MDI viewport disappearing when you double-click its tab on a secondary monitor. |
 | 20 | `winex11.drv` | Anchors the XRandR primary rect at root (0,0). Wayland compositors reassign the primary output as focus moves, which otherwise shifts Wine's origin by a full monitor width and freezes the pointer. Directly relevant on COSMIC. |
 | 21 | `win32u` | Written for this repository, not from upstream. After a geometry change, invalidates the windows that own an OpenGL client surface so their owner repaints. Rhino only draws on demand, so a resized viewport otherwise keeps a stale, smaller drawable and the uncovered area stays black until you rotate the view or minimize the window. Patch 18 does the same thing, but only for `SW_MAXIMIZE` and for Vulkan swapchain recreation, neither of which Rhino 7 triggers. |
@@ -87,9 +88,8 @@ and, in patch 18's case, repainting after a swapchain resize.
 |---|---|
 | 06 | DirectComposition visual tree hosting for Edge WebView2. Rhino 7 ships no WebView2 and no `dcomp` consumer. |
 | 07 | Guards for hidden DirectComposition targets, same reason as 06. |
-| 17 | Keeps the Rhino 9 `RhinoGreet` splash visible, and exports unsuffixed `GetWindowLongPtr` / `SetWindowLongPtr`. Rhino 7 has no `RhinoGreet`. The export aliases are harmless, but the patch is a mix of three unrelated changes and is not worth carrying untested. |
 
-If you want the full original stack, including the dropped three, use the
+If you want the full original stack, including the dropped two, use the
 upstream repository directly and point `install.sh --wine` at the Wine it builds.
 
 ## Applying by hand

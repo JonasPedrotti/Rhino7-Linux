@@ -71,7 +71,7 @@ TARGET_PREFIX="${RHINO_PREFIX:-${WINEPREFIX:-}}"
 
 # Patch groups, see docs/patches.md. Numbers match the upstream rhino-linux set,
 # so gaps (06, 07, 17) are intentional: those patches only serve Rhino 8/9.
-CORE_PATCHES="01 02 03 04 05 08 09 10 12 14 19 20 21"
+CORE_PATCHES="01 02 03 04 05 08 09 10 12 14 17 19 20 21"
 LICENSING_PATCHES="13 15"
 D3D_PATCHES="11 18"
 WAYLAND_PATCHES="16"
