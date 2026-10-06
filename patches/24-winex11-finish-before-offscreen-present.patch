@@ -1,0 +1,30 @@
+# Finish the GL work before presenting an offscreen drawable.
+#
+# Wine synchronises the swap of a redirected OpenGL child window only when
+# GLX_OML_sync_control is available: it flushes, swaps with
+# glXSwapBuffersMscOML and waits with glXWaitForSbcOML. Without that extension
+# it falls back to a plain, asynchronous glXSwapBuffers, and the XFlush that
+# follows only flushes the X connection - it does not wait for GL. The present
+# right after copies the drawable before the swap has landed, so the frame the
+# application just produced is never shown.
+
+--- a/dlls/winex11.drv/opengl.c	2026-10-06 17:19:57.909159700 +0200
++++ b/dlls/winex11.drv/opengl.c	2026-10-06 17:19:57.917489200 +0200
+@@ -1469,7 +1469,16 @@
+         if (pglXWaitForSbcOML) pglXWaitForSbcOML( gdi_display, gl->drawable, target_sbc, &ust, &msc, &sbc );
+     }
+ 
+-    if (offscreen && !pglXWaitForSbcOML) XFlush( gdi_display );
++    if (offscreen && !pglXWaitForSbcOML)
++    {
++        /* Without GLX_OML_sync_control the swap above is asynchronous and
++         * nothing waits for it, while XFlush only flushes the X connection.
++         * Presenting right away copies the drawable before the swap has landed
++         * in it, so the application never sees that frame: the viewport keeps
++         * its previous contents until something produces another one. */
++        funcs->p_glFinish();
++        XFlush( gdi_display );
++    }
+ 
+     client_surface_present( base->client );
+     return TRUE;
