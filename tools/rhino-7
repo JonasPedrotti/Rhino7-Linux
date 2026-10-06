@@ -43,6 +43,7 @@ Environment:
   RHINO_DXVK=1             Enable the optional DXVK configuration
   RHINO_GL_OVERRIDE=4.1    Force a Mesa OpenGL version if the driver underreports
   RHINO_GRAPHICS_DRIVER    x11 (default) or wayland
+  RHINO_VBLANK=1           Restore vsync (off by default, see the viewport notes)
 EOF
     exit 0
 fi
@@ -212,6 +213,17 @@ export WINE_DISABLE_CLIP_CURSOR=1
 # ------------------------------------------------------------------------------
 # OpenGL (Rhino 7 display pipeline)
 # ------------------------------------------------------------------------------
+# Rhino swaps its viewport buffers with a swap interval of 1, so the presentation
+# waits for a vertical blank. Wine renders child-window OpenGL into an offscreen
+# drawable, where that wait does not resolve the way the application expects, and
+# a finished frame can sit there unseen - the viewport only catches up when the
+# next interaction forces another frame. Disabling the vblank wait is what makes
+# the content appear immediately. Set RHINO_VBLANK=1 to restore vsync.
+if [ "${RHINO_VBLANK:-0}" = "0" ]; then
+    export vblank_mode=0            # Mesa
+    export __GL_SYNC_TO_VBLANK=0    # NVIDIA proprietary
+fi
+
 # Rhino 7 needs an OpenGL 4.1 core context. Mesa reports 4.6 on all supported
 # hardware, so no override is needed by default. Set RHINO_GL_OVERRIDE=4.1 when
 # a driver underreports its version and Rhino drops to software display.
