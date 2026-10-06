@@ -123,9 +123,18 @@ Ruled out by testing, so you do not have to repeat it:
 | GPU driver | `LIBGL_ALWAYS_SOFTWARE=1 rhino-7` | identical under llvmpipe |
 | Compositor, XWayland | `Xephyr -screen 1600x900 :5 &` then `DISPLAY=:5 rhino-7` | identical in a plain X server |
 | Wine too old or unpatched | patched `wine-11.18` with the full set | identical |
+| Covered sibling viewports blitting over it | `DCX_CLIPSIBLINGS` on the present | no change; a trace shows the siblings present once at startup and never again |
+| Stale surface rectangles | `WINEDEBUG=+x11drv`, read the present rects | correct: source and destination are the new size |
+| A missing repaint | invalidating every client-surface window on geometry change | no change, although it fired over a thousand times in one session |
 
-Patch 21 in this repository fixes the related case of a black bar on the right
-when the main window is maximized, but not this one.
+What the traces show: between maximizing the viewport and the next view change,
+Wine performs **no present at all** for that window. Rhino simply does not render
+a frame, and it does not render one in response to `WM_PAINT` either. Wine erases
+the parent region when a child is resized, which is why the area goes black
+rather than keeping the old content, and nothing paints over it afterwards.
+
+Making Rhino draw is the only thing that would fix it, and no amount of
+invalidation from Wine's side achieved that here.
 
 ## Tooltips in the wrong place
 
