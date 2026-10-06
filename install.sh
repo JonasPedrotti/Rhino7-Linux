@@ -10,7 +10,7 @@
 #
 # Options:
 #   -y, --yes               Non-interactive (accept defaults)
-#   --deps                  Install the distribution packages first
+#   --deps                  Install the runtime packages (build packages come with --build-wine)
 #   --check                 Run environment diagnostics only and exit
 #   --prefix <PATH>         Wine prefix (default: ~/.wine-rhino7)
 #   --wine <PATH>           Use this Wine binary
@@ -88,7 +88,7 @@ Usage:
 
 Options:
   -y, --yes               Non-interactive (accept defaults)
-  --deps                  Install the distribution packages first
+  --deps                  Install the runtime packages (build packages come with --build-wine)
   --check                 Run environment diagnostics only and exit
   --prefix <PATH>         Wine prefix (default: ~/.wine-rhino7)
   --wine <PATH>           Use this Wine binary
