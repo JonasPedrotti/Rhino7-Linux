@@ -557,6 +557,10 @@ build_patched_wine() {
     if [ -d "$src_dir/.git" ]; then
         echo "Resetting the source tree..."
         git -C "$src_dir" checkout -- . 2>/dev/null || true
+        # checkout only restores modified files. Patches that add new ones, such
+        # as comctl32/taskdialog.c, would otherwise stay behind and make the
+        # patch fail on the next run.
+        git -C "$src_dir" clean -fdq 2>/dev/null || true
     fi
 
     local num
