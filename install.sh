@@ -24,8 +24,9 @@
 #   --dxvk                  Deploy DXVK (optional, Direct3D only)
 #   --dxvk-dir <PATH>       Directory with 64-bit DXVK DLLs
 #   --cosmic-rules          Write a COSMIC auto-tiling exception for Rhino
-  --pin-dock              Pin Rhino to the COSMIC dock
-  --no-integration        No dock pin, no window rules, menu entry only
+#   --pin-dock              Pin Rhino to the COSMIC dock
+#   --no-integration        No dock pin, no window rules, menu entry only
+#   --ntsync                Enable /dev/ntsync and exit
 #   --installer <PATH>      Run this Rhino 7 installer .exe inside the prefix
 #   --run                   Launch Rhino when finished
 #   -h, --help              Show this help
@@ -55,6 +56,7 @@ CUSTOM_DXVK_DIR=""
 COSMIC_RULES=0
 PIN_DOCK=0
 NO_INTEGRATION=0
+NTSYNC_ONLY=0
 RHINO_INSTALLER=""
 RUN_RHINO=0
 WINE_VERSION="wine-11.18"
@@ -89,6 +91,7 @@ Usage:
 Options:
   -y, --yes               Non-interactive (accept defaults)
   --deps                  Install the runtime packages (build packages come with --build-wine)
+  --ntsync                Enable /dev/ntsync and exit
   --check                 Run environment diagnostics only and exit
   --prefix <PATH>         Wine prefix (default: ~/.wine-rhino7)
   --wine <PATH>           Use this Wine binary
@@ -121,6 +124,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -y|--yes|--non-interactive) NON_INTERACTIVE=1; shift ;;
         --deps) INSTALL_DEPS=1; shift ;;
+        --ntsync) NTSYNC_ONLY=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
         --prefix) TARGET_PREFIX="$2"; shift 2 ;;
         --wine) CUSTOM_WINE="$2"; shift 2 ;;
@@ -378,6 +382,7 @@ run_checks() {
         echo -e " $pass /dev/ntsync present (fast in-kernel synchronisation)"
     else
         echo -e " $warn /dev/ntsync missing; Wine falls back to futex synchronisation"
+        echo -e "        enable it with: ${CYAN}./install.sh --ntsync${NC}"
     fi
 
     local clr="$TARGET_PREFIX/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
@@ -411,6 +416,11 @@ run_checks() {
         fi
     fi
 }
+
+if [ "$NTSYNC_ONLY" -eq 1 ]; then
+    enable_ntsync
+    exit 0
+fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
     run_checks
