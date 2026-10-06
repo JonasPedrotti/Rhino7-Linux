@@ -550,6 +550,15 @@ build_patched_wine() {
             https://gitlab.winehq.org/wine/wine.git "$src_dir"
     fi
 
+    # Reset to pristine sources before patching. Without this, an edited patch
+    # cannot be applied over the previous version of itself and the only way out
+    # is deleting the tree and rebuilding everything. git only rewrites the
+    # files the patches touched, so make still rebuilds just those.
+    if [ -d "$src_dir/.git" ]; then
+        echo "Resetting the source tree..."
+        git -C "$src_dir" checkout -- . 2>/dev/null || true
+    fi
+
     local num
     cd "$src_dir"
     while read -r num; do
