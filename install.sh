@@ -293,8 +293,15 @@ run_checks() {
     local pass="${GREEN}[PASS]${NC}" warn="${YELLOW}[WARN]${NC}" fail="${RED}[FAIL]${NC}"
     echo -e "\n${BOLD}${BLUE}[Check] Environment${NC}"
 
-    if command -v wine >/dev/null 2>&1; then
-        echo -e " $pass wine: $(wine --version 2>/dev/null)"
+    # Report the Wine that will actually be used, not whatever is first in PATH.
+    local checked_wine="${WINE_BIN:-}"
+    if [ -z "$checked_wine" ]; then
+        local cfg="${XDG_CONFIG_HOME:-$HOME/.config}/rhino7-linux/config"
+        [ -f "$cfg" ] && checked_wine="$(sed -n 's/^RHINO_WINE="\(.*\)"$/\1/p' "$cfg")"
+    fi
+    [ -x "${checked_wine:-}" ] || checked_wine="$(command -v wine 2>/dev/null || true)"
+    if [ -n "$checked_wine" ]; then
+        echo -e " $pass wine: $("$checked_wine" --version 2>/dev/null) at $checked_wine"
     else
         echo -e " $fail wine not found. Run ./install.sh --deps"
     fi
