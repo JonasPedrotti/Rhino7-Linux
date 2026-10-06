@@ -1,13 +1,14 @@
 # Wine patches
 
-16 patches for X11 / XWayland plus one optional patch for the native Wayland
+17 patches for X11 / XWayland plus one optional patch for the native Wayland
 driver, carried unmodified from
 [Jabern/rhino-linux](https://github.com/Jabern/rhino-linux) and reduced to the
 subset that matters for **Rhino 7**. Upstream numbering is preserved; 06, 07 and
 17 are deliberately absent because they only serve Rhino 8/9 (Edge WebView2,
 DirectComposition, the `RhinoGreet` splash).
 
-Verified to apply cleanly to `wine-11.18`, individually and as a series.
+Verified to apply cleanly to `wine-11.18`, individually and as a series. All but
+patch 21 are carried unmodified from upstream; 21 was written here.
 
 | # | File | Component | Group |
 |---|---|---|---|
@@ -28,6 +29,7 @@ Verified to apply cleanly to `wine-11.18`, individually and as a series.
 | 18 | `18-x11-client-surface-repaint.patch` | `win32u` / `winex11.drv` | d3d |
 | 19 | `19-wine-multimonitor-child-maximize.patch` | `win32u` | core |
 | 20 | `20-wine-xrandr-primary-anchor.patch` | `winex11.drv` | core |
+| 21 | `21-win32u-invalidate-client-surface-on-resize.patch` | `win32u` | core (this repo) |
 
 What each one fixes, and why it is in that group, is in
 [../docs/patches.md](../docs/patches.md).

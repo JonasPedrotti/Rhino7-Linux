@@ -1,0 +1,53 @@
+--- a/dlls/win32u/window.c	2026-10-06 10:18:24.931668200 +0200
++++ b/dlls/win32u/window.c	2026-10-06 10:19:07.098095900 +0200
+@@ -473,6 +473,37 @@
+     pthread_mutex_unlock( &surfaces_lock );
+ }
+ 
++
++/* Ask the owners of the client surfaces under hwnd to repaint. An application
++ * that only draws on demand - a CAD viewport grid, for instance - never
++ * redraws an OpenGL child window that was resized by a layout change, so the
++ * drawable keeps its old size and the uncovered area stays black until
++ * something else happens to trigger a paint. */
++static void invalidate_client_surface_windows( HWND hwnd )
++{
++    struct client_surface *surface;
++    HWND windows[32];  /* enough for a CAD viewport layout */
++    UINT i, count = 0;
++
++    pthread_mutex_lock( &surfaces_lock );
++    LIST_FOR_EACH_ENTRY( surface, &client_surfaces, struct client_surface, entry )
++    {
++        if (!surface->hwnd) continue;
++        if (surface->hwnd != hwnd && surface->toplevel != hwnd &&
++            !is_child( hwnd, surface->hwnd )) continue;
++        for (i = 0; i < count; i++) if (windows[i] == surface->hwnd) break;
++        if (i < count) continue;
++        if (count == 32) break;
++        client_surface_update_locked( surface );
++        windows[count++] = surface->hwnd;
++    }
++    pthread_mutex_unlock( &surfaces_lock );
++
++    /* redraw outside the lock, painting re-enters the window code */
++    for (i = 0; i < count; i++)
++        NtUserRedrawWindow( windows[i], NULL, NULL, RDW_INVALIDATE | RDW_ERASE );
++}
++
+ BOOL client_surface_get_size( struct client_surface *surface, SIZE *virtual_size, SIZE *monitor_size )
+ {
+     BOOL updated;
+@@ -4242,6 +4273,12 @@
+         send_message( winpos->hwnd, WM_WINDOWPOSCHANGED, 0, (LPARAM)winpos );
+     }
+ 
++
++    /* A geometry change leaves OpenGL child windows showing a stale drawable
++     * in applications that paint on demand, so force them to repaint. */
++    if ((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE)
++        invalidate_client_surface_windows( winpos->hwnd );
++
+     if ((winpos->flags & (SWP_NOSIZE|SWP_NOMOVE|SWP_FRAMECHANGED)) != (SWP_NOSIZE|SWP_NOMOVE))
+         NtUserNotifyWinEvent( EVENT_OBJECT_LOCATIONCHANGE, winpos->hwnd, OBJID_WINDOW, 0 );
+ 

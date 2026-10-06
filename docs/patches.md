@@ -22,7 +22,7 @@ OpenMP fixes are what actually change the Rhino 7 experience.
 
 What has been checked for this repository:
 
-- All 17 patches apply to a clean `wine-11.18` tree, individually and as a
+- All 18 patches apply to a clean `wine-11.18` tree, individually and as a
   series in numeric order, with no rejects (`patch -p1 --dry-run` and a real
   run).
 - None of the kept patches references a symbol introduced by the three dropped
@@ -37,8 +37,8 @@ and report back what breaks.
 
 `install.sh --patches <set>` selects the group:
 
-- **`core`** (12 patches): 01 02 03 04 05 08 09 10 12 14 19 20
-- **`all`** (default, 16 patches): core plus licensing (13, 15) and
+- **`core`** (13 patches): 01 02 03 04 05 08 09 10 12 14 19 20 21
+- **`all`** (default, 17 patches): core plus licensing (13, 15) and
   Direct3D (11, 18)
 - **`--wayland`** additionally applies 16, the experimental `winewayland.drv`
   patch. Do not expect Rhino 7 to be usable on the native Wayland driver; the
@@ -62,6 +62,7 @@ These address problems that show up in a plain Rhino 7 session.
 | 14 | `comctl32` | Adds `TaskDialog` / `TaskDialogIndirect`. Rhino uses task dialogs for license and crash prompts, which silently vanish on the stub. |
 | 19 | `win32u` | Excludes child windows from monitor offset maths in `get_maximized_rect` / `get_min_max_info`. This is the fix for an MDI viewport disappearing when you double-click its tab on a secondary monitor. |
 | 20 | `winex11.drv` | Anchors the XRandR primary rect at root (0,0). Wayland compositors reassign the primary output as focus moves, which otherwise shifts Wine's origin by a full monitor width and freezes the pointer. Directly relevant on COSMIC. |
+| 21 | `win32u` | Written for this repository, not from upstream. After a geometry change, invalidates the windows that own an OpenGL client surface so their owner repaints. Rhino only draws on demand, so a resized viewport otherwise keeps a stale, smaller drawable and the uncovered area stays black until you rotate the view or minimize the window. Patch 18 does the same thing, but only for `SW_MAXIMIZE` and for Vulkan swapchain recreation, neither of which Rhino 7 triggers. |
 
 ## Licensing set (13, 15)
 
