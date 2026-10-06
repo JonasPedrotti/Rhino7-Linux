@@ -300,6 +300,22 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] && command -v winetricks >/dev/null 2>&1; then
     wait_wineserver
 fi
 
+# The .NET and Visual C++ installers leave RunOnce entries behind that Wine
+# executes on every prefix update. They call rundll32 with managed DLLs, fail,
+# pop up "This application could not be started", and because they fail they are
+# never cleared either - so the dialog returns after every Wine change. Their
+# work is long done, so the lists are emptied and recreated.
+echo "      Clearing leftover RunOnce entries..."
+for runonce_key in \
+    'HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce' \
+    'HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce' \
+    'HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce'; do
+    if "$WINE_BIN" reg query "$runonce_key" >/dev/null 2>&1; then
+        "$WINE_BIN" reg delete "$runonce_key" /f >/dev/null 2>&1 || true
+        "$WINE_BIN" reg add "$runonce_key" /f >/dev/null 2>&1 || true
+    fi
+done
+
 # Rhino 7 requires Windows 10 as the reported version.
 "$WINE_BIN" winecfg -v win10 >/dev/null 2>&1 || true
 

@@ -84,7 +84,8 @@ printf 'KERNEL=="ntsync", MODE="0666"\n' | \
 sudo udevadm control --reload && sudo udevadm trigger
 ```
 
-The `rhino-7` launcher sets `WINENTSYNC=1` by itself when `/dev/ntsync` exists,
+`./install.sh --deps` does all of this for you. The `rhino-7` launcher sets
+`WINENTSYNC=1` by itself once `/dev/ntsync` exists,
 so there is nothing else to configure.
 
 ## 4. DXVK on Fedora (optional)

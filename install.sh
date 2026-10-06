@@ -253,6 +253,40 @@ install_runtime_deps() {
         suse)   $sudo_cmd zypper install -y $deps ;;
         *) echo -e "${YELLOW}Unknown distribution. Install manually: $deps${NC}" ;;
     esac
+    enable_ntsync
+}
+
+# ntsync is Wine's in-kernel implementation of NT synchronisation objects,
+# present in Linux 6.14 and later. It is not loaded by default and its device
+# node is root-only, so Wine falls back to futexes. Rhino's meshing and
+# Grasshopper solves are thread heavy, which is where it pays off.
+enable_ntsync() {
+    local sudo_cmd=""
+    [ -w /dev/ntsync ] && return 0
+    command -v sudo >/dev/null 2>&1 && sudo_cmd="sudo"
+    [ -n "$sudo_cmd" ] || [ "$(id -u)" = "0" ] || return 0
+
+    echo -e "\n${BOLD}${BLUE}[Deps] Enabling /dev/ntsync...${NC}"
+    if ! modinfo ntsync >/dev/null 2>&1 && [ ! -e /dev/ntsync ]; then
+        echo -e " ${YELLOW}skipped${NC}  this kernel has no ntsync module (needs 6.14 or newer)"
+        return 0
+    fi
+
+    $sudo_cmd modprobe ntsync 2>/dev/null || true
+    echo ntsync | $sudo_cmd tee /etc/modules-load.d/ntsync.conf >/dev/null 2>&1 || true
+
+    if [ -e /dev/ntsync ] && [ ! -w /dev/ntsync ]; then
+        printf 'KERNEL=="ntsync", MODE="0666"\n' | \
+            $sudo_cmd tee /etc/udev/rules.d/70-ntsync.rules >/dev/null 2>&1 || true
+        $sudo_cmd udevadm control --reload >/dev/null 2>&1 || true
+        $sudo_cmd udevadm trigger >/dev/null 2>&1 || true
+    fi
+
+    if [ -w /dev/ntsync ]; then
+        echo -e " ${GREEN}ok${NC}       /dev/ntsync is available and writable"
+    else
+        echo -e " ${YELLOW}warn${NC}     /dev/ntsync still unavailable; Wine will use futexes"
+    fi
 }
 
 install_build_deps() {
