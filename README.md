@@ -58,13 +58,31 @@ rhino-7 --log        # launch with a Wine log
 
 ## Status
 
-Tested on Fedora 44 with COSMIC 1.8: the setup installs, Rhino 7.38 starts, Cloud
-Zoo licensing completes and the viewports render. On stock Wine the repaint
-problems described above are present, which is what the patch set is for.
+Tested on Fedora 44 with COSMIC 1.8, in a VMware guest: the setup installs,
+Rhino 7.38 starts, Cloud Zoo licensing completes, and modelling works.
 
-Not yet confirmed: that the patched build removes them. The patches are verified
-to apply cleanly to `wine-11.18`, and every failure encountered so far is in
-[docs/troubleshooting.md](docs/troubleshooting.md). Reports welcome.
+**The repaint problem is not solved.** When a viewport is maximized, the area of
+the other viewports stays black until something makes Rhino draw again - rotating
+the view, or minimizing and restoring the window. The patched build fixes the
+black bar on the right when the main window is maximized, but not this.
+
+What was ruled out by testing, so nobody repeats it:
+
+- Not the GPU driver: identical with `LIBGL_ALWAYS_SOFTWARE=1` (llvmpipe).
+- Not the compositor: identical in a nested X server (`Xephyr`), without
+  XWayland or COSMIC involved.
+- Not a missing expose: dragging another window across the black area does not
+  repaint it, while anything that makes Rhino itself draw does.
+
+What is left is Wine's handling of OpenGL child windows, which it renders into an
+offscreen drawable and blits back. The community recipe this repository builds on
+records the same symptom as unsolved. Tooltip mispositioning, by contrast, is
+XWayland/COSMIC specific: tooltips sit correctly under a plain X server.
+
+The patches are verified to apply cleanly to `wine-11.18`. Every failure
+encountered so far, with its fix where one exists, is in
+[docs/troubleshooting.md](docs/troubleshooting.md). Reports welcome, especially
+from real hardware and from other desktops.
 
 ## Credits
 

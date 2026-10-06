@@ -103,6 +103,37 @@ WINEPREFIX=~/.wine-rhino7 /path/to/wine wineboot -u
 
 The setup does this by itself when it notices the Wine binary changed.
 
+## Black areas after maximizing a viewport
+
+Known and unsolved. Maximizing a viewport leaves the area the other viewports
+occupied black. Anything that makes Rhino draw clears it:
+
+- rotate or pan the view (right-drag)
+- zoom
+- minimize the window and restore it
+
+An expose event does not: dragging another window across the black area leaves
+it black. Rhino only paints on demand, and Wine does not deliver a paint for the
+resized OpenGL child window.
+
+Ruled out by testing, so you do not have to repeat it:
+
+| Suspicion | Test | Result |
+|---|---|---|
+| GPU driver | `LIBGL_ALWAYS_SOFTWARE=1 rhino-7` | identical under llvmpipe |
+| Compositor, XWayland | `Xephyr -screen 1600x900 :5 &` then `DISPLAY=:5 rhino-7` | identical in a plain X server |
+| Wine too old or unpatched | patched `wine-11.18` with the full set | identical |
+
+Patch 21 in this repository fixes the related case of a black bar on the right
+when the main window is maximized, but not this one.
+
+## Tooltips in the wrong place
+
+Under COSMIC through XWayland, Rhino's tooltips can appear far from the cursor,
+often stacked at the same position. Under a plain X server they are placed
+correctly, so this is an XWayland or compositor issue rather than a Wine one.
+There is no fix here yet; the tooltips are readable, just misplaced.
+
 ## The icon is wrong
 
 `Rhino.exe` carries several icon groups - the application icon, the `.3dm`
