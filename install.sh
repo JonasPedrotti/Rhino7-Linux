@@ -599,8 +599,17 @@ build_patched_wine() {
 
     mkdir -p "$build_dir"
     cd "$build_dir"
-    echo "Configuring (prefix: $WINE_INSTALL_DIR)..."
-    "$src_dir/configure" "${configure_args[@]}"
+    # Re-running configure rewrites config.h, and everything that includes it is
+    # then rebuilt - an hour instead of the minutes a changed patch needs. Reuse
+    # an existing configuration when it was made with the same arguments.
+    if [ -f config.status ] && [ -f include/config.h ] && \
+       grep -q "prefix=$WINE_INSTALL_DIR" config.log 2>/dev/null && \
+       grep -q 'enable-archs=i386,x86_64' config.log 2>/dev/null; then
+        echo "Reusing the existing build configuration."
+    else
+        echo "Configuring (prefix: $WINE_INSTALL_DIR)..."
+        "$src_dir/configure" "${configure_args[@]}"
+    fi
 
     # Wine configures and builds happily without OpenGL and then cannot create a
     # GL context at runtime: Rhino shows "An error occurred trying to initialize
