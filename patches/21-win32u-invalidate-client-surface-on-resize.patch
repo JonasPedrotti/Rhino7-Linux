@@ -1,16 +1,19 @@
 --- a/dlls/win32u/window.c	2026-10-06 10:18:24.931668200 +0200
-+++ b/dlls/win32u/window.c	2026-10-06 10:19:07.098095900 +0200
-@@ -473,6 +473,37 @@
++++ b/dlls/win32u/window.c	2026-10-06 10:30:36.542858800 +0200
+@@ -473,6 +473,42 @@
      pthread_mutex_unlock( &surfaces_lock );
  }
  
 +
-+/* Ask the owners of the client surfaces under hwnd to repaint. An application
-+ * that only draws on demand - a CAD viewport grid, for instance - never
-+ * redraws an OpenGL child window that was resized by a layout change, so the
-+ * drawable keeps its old size and the uncovered area stays black until
-+ * something else happens to trigger a paint. */
-+static void invalidate_client_surface_windows( HWND hwnd )
++/* Ask the owners of the OpenGL client surfaces under hwnd to repaint, and
++ * report whether any were found. An application that only draws on demand - a
++ * CAD viewport grid, for instance - does not redraw a child window that a
++ * layout change resized, so the drawable keeps its old size and the uncovered
++ * area stays black until something else triggers a paint.
++ *
++ * RDW_ERASE is deliberately not used: erasing a region that the owner then
++ * never paints leaves it blank, which is worse than stale content. */
++static BOOL invalidate_client_surface_windows( HWND hwnd )
 +{
 +    struct client_surface *surface;
 +    HWND windows[32];  /* enough for a CAD viewport layout */
@@ -32,21 +35,30 @@
 +
 +    /* redraw outside the lock, painting re-enters the window code */
 +    for (i = 0; i < count; i++)
-+        NtUserRedrawWindow( windows[i], NULL, NULL, RDW_INVALIDATE | RDW_ERASE );
++        NtUserRedrawWindow( windows[i], NULL, NULL, RDW_INVALIDATE );
++
++    return count > 0;
 +}
 +
  BOOL client_surface_get_size( struct client_surface *surface, SIZE *virtual_size, SIZE *monitor_size )
  {
      BOOL updated;
-@@ -4242,6 +4273,12 @@
+@@ -4242,6 +4278,19 @@
          send_message( winpos->hwnd, WM_WINDOWPOSCHANGED, 0, (LPARAM)winpos );
      }
  
 +
 +    /* A geometry change leaves OpenGL child windows showing a stale drawable
-+     * in applications that paint on demand, so force them to repaint. */
-+    if ((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE)
-+        invalidate_client_surface_windows( winpos->hwnd );
++     * in applications that paint on demand. Repaint them, and also the parent:
++     * when one viewport is maximized its siblings are hidden, and the area they
++     * occupied belongs to the parent, which Wine erases but nobody repaints. */
++    if ((winpos->flags & SWP_AGG_STATUSFLAGS) != SWP_AGG_NOGEOMETRYCHANGE &&
++        invalidate_client_surface_windows( winpos->hwnd ))
++    {
++        HWND parent = NtUserGetAncestor( winpos->hwnd, GA_PARENT );
++        if (parent && parent != get_desktop_window())
++            NtUserRedrawWindow( parent, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN );
++    }
 +
      if ((winpos->flags & (SWP_NOSIZE|SWP_NOMOVE|SWP_FRAMECHANGED)) != (SWP_NOSIZE|SWP_NOMOVE))
          NtUserNotifyWinEvent( EVENT_OBJECT_LOCATIONCHANGE, winpos->hwnd, OBJID_WINDOW, 0 );
