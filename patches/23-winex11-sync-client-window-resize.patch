@@ -1,0 +1,25 @@
+# Wait for the X server to carry out a client window resize.
+#
+# Wine resizes the X11 window that backs an OpenGL child window with an
+# asynchronous XConfigureWindow. A redirected window gets a new backing pixmap
+# when the server performs the resize, discarding the old contents. Rhino
+# renders and swaps immediately after Wine issues that request, so its frame
+# lands in the pixmap that is about to be thrown away: the maximized viewport
+# stays blank until some later interaction produces another frame.
+
+--- a/dlls/winex11.drv/init.c	2026-10-06 17:06:28.094022400 +0200
++++ b/dlls/winex11.drv/init.c	2026-10-06 17:06:28.126894500 +0200
+@@ -417,6 +417,13 @@
+     TRACE( "client window %p/%lx, requesting position %d,%d size %d,%d mask %#x\n", hwnd,
+            surface->window, changes.x, changes.y, changes.width, changes.height, mask );
+     XConfigureWindow( gdi_display, surface->window, mask, &changes );
++    /* The resize is an asynchronous request. A redirected window gets a fresh
++     * backing pixmap when the server carries it out, and the old contents are
++     * discarded. An application that renders and swaps immediately afterwards
++     * draws into the pixmap that is about to be thrown away, so its frame is
++     * lost and the area stays blank until something triggers another one.
++     * Wait for the server to resize the window before anyone draws into it. */
++    if (mask & (CWWidth | CWHeight)) XSync( gdi_display, False );
+ }
+ 
+ static void client_surface_update_offscreen( HWND hwnd, struct x11drv_client_surface *surface )
