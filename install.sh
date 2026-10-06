@@ -260,14 +260,24 @@ install_build_deps() {
     local sudo_cmd=""; command -v sudo >/dev/null 2>&1 && sudo_cmd="sudo"
     case "$DISTRO_FAMILY" in
         fedora)
-            # builddep pulls the exact set Fedora uses for its own wine package.
+            # The explicit list runs first and is what the build actually needs.
+            # builddep is only a bonus on top, because it depends on the source
+            # repositories being enabled and silently does nothing otherwise -
+            # which is how a Wine without OpenGL gets built.
+            $sudo_cmd dnf install -y \
+                gcc gcc-c++ make bison flex \
+                mingw64-gcc mingw64-gcc-c++ mingw32-gcc mingw32-gcc-c++ \
+                mesa-libGL-devel mesa-libEGL-devel mesa-libGLU-devel libglvnd-devel \
+                libX11-devel libXext-devel libXcomposite-devel libXdamage-devel \
+                libXrandr-devel libXcursor-devel libXi-devel libXrender-devel \
+                libXfixes-devel libXinerama-devel libXxf86vm-devel \
+                freetype-devel fontconfig-devel gnutls-devel \
+                alsa-lib-devel pulseaudio-libs-devel pipewire-devel \
+                vulkan-loader-devel wayland-devel wayland-protocols-devel libxkbcommon-devel \
+                gstreamer1-devel gstreamer1-plugins-base-devel \
+                dbus-devel cups-devel libusb1-devel krb5-devel openldap-devel SDL2-devel
             $sudo_cmd dnf install -y dnf-plugins-core 2>/dev/null || true
-            $sudo_cmd dnf builddep -y wine || \
-                $sudo_cmd dnf install -y gcc gcc-c++ make bison flex \
-                    mingw64-gcc mingw64-gcc-c++ mingw32-gcc mingw32-gcc-c++ \
-                    libX11-devel freetype-devel gnutls-devel libXext-devel libXcomposite-devel \
-                    libXdamage-devel libXrandr-devel vulkan-loader-devel wayland-devel \
-                    libxkbcommon-devel
+            $sudo_cmd dnf builddep -y wine 2>/dev/null || true
             ;;
         arch)   $sudo_cmd pacman -S --needed --noconfirm base-devel bison flex mingw-w64-gcc libxext libxcomposite libxdamage libxrandr vulkan-headers ;;
         debian) $sudo_cmd apt build-dep -y wine || $sudo_cmd apt install -y build-essential bison flex gcc-mingw-w64 libx11-dev libfreetype-dev libgnutls28-dev libxext-dev libxcomposite-dev libxdamage-dev libxrandr-dev ;;
@@ -571,6 +581,31 @@ build_patched_wine() {
     cd "$build_dir"
     echo "Configuring (prefix: $WINE_INSTALL_DIR)..."
     "$src_dir/configure" "${configure_args[@]}"
+
+    # Wine configures and builds happily without OpenGL and then cannot create a
+    # GL context at runtime: Rhino shows "An error occurred trying to initialize
+    # the graphics system" and the log says
+    # "err:wgl:internal_context_create Failed to create internal global context".
+    # Catch it here rather than after an hour of compiling.
+    if ! grep -qE '^#define SONAME_LIB(GL|EGL)' include/config.h; then
+        echo "" >&2
+        echo -e "${RED}Stopping: configure found no OpenGL library, so this build could not${NC}" >&2
+        echo -e "${RED}render Rhino's viewports.${NC}" >&2
+        echo "" >&2
+        echo "Install the development files and start the build over:" >&2
+        case "$DISTRO_FAMILY" in
+            fedora) echo -e "  ${CYAN}sudo dnf install -y mesa-libGL-devel mesa-libEGL-devel libglvnd-devel${NC}" >&2 ;;
+            debian) echo -e "  ${CYAN}sudo apt install -y libgl-dev libegl-dev${NC}" >&2 ;;
+            arch)   echo -e "  ${CYAN}sudo pacman -S --needed mesa libglvnd${NC}" >&2 ;;
+            *)      echo "  the OpenGL and EGL development packages of your distribution" >&2 ;;
+        esac
+        echo -e "  ${CYAN}rm -rf '$build_dir' && ./install.sh --build-wine${NC}" >&2
+        return 1
+    fi
+    echo " OpenGL support: present"
+    grep -qE '^#define SONAME_LIBVULKAN' include/config.h || \
+        echo " Note: no Vulkan at build time; only matters if you use DXVK."
+
     echo "Compiling with $(nproc) jobs. This takes a while..."
     make -j"$(nproc)"
     make install

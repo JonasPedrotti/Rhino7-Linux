@@ -47,6 +47,36 @@ WINEPREFIX=~/.wine-rhino7 wine reg delete 'HKCU\Software\Wine\AppDefaults\Rhino.
 The same applies to any other library set to plain `native`: use
 `native,builtin` unless you are certain the native DLL is really there.
 
+## "An error occurred trying to initialize the graphics system"
+
+Rhino cannot create an OpenGL context. Look for the cause in the log:
+
+```bash
+rhino-7 --log
+grep -iE 'err:wgl|err:opengl' ~/.cache/rhino7-linux/logs/rhino-*.log
+```
+
+**`err:wgl:internal_context_create Failed to create internal global context`**
+with a self-built Wine means that Wine was compiled without OpenGL. It builds
+and installs happily that way, and only fails when an application asks for a
+context. Confirm it:
+
+```bash
+grep -E 'SONAME_LIBGL|SONAME_LIBEGL' ~/Rhino7-Linux/build-wine/include/config.h
+```
+
+`/* #undef ... */` on both lines is the proof. Install the development files and
+rebuild from scratch:
+
+```bash
+sudo dnf install -y mesa-libGL-devel mesa-libEGL-devel libglvnd-devel
+cd ~/Rhino7-Linux && rm -rf build-wine && ./install.sh --build-wine
+```
+
+`install.sh` now checks this right after `configure` and stops there instead of
+compiling for an hour first. The usual root cause on Fedora is that
+`dnf builddep wine` does nothing because the source repositories are disabled.
+
 ## After switching the Wine build
 
 **`wine: failed to load ...syswow64\ntdll.dll error c0000135`.** The Wine in use
