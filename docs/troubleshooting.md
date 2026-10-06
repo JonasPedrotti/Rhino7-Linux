@@ -103,6 +103,26 @@ WINEPREFIX=~/.wine-rhino7 /path/to/wine wineboot -u
 
 The setup does this by itself when it notices the Wine binary changed.
 
+## The icon is wrong
+
+`Rhino.exe` carries several icon groups - the application icon, the `.3dm`
+document icon and Grasshopper. The setup takes the group with the lowest
+resource id, which is the one Windows itself shows. If that still picks the
+wrong one, choose by hand:
+
+```bash
+mkdir -p /tmp/ico
+wrestool -x -t 14 -o /tmp/ico ~/.wine-rhino7/drive_c/Program\ Files/Rhino\ 7/System/Rhino.exe
+icotool -x -o /tmp/ico /tmp/ico/*.ico
+ls /tmp/ico/*.png          # look at them, pick one
+RHINO_ICON=/tmp/ico/<the right one>.png ./install.sh --no-download
+```
+
+The icon file ends up at
+`~/.local/share/icons/hicolor/256x256/apps/rhino7.png`. Desktop panels cache
+icons, so if the dock keeps showing the old one after the file changed, unpin
+and repin the entry, or log out and back in.
+
 ## Rhino starts and nothing happens
 
 The launcher runs with `WINEDEBUG=-all`, so a silent exit looks the same as

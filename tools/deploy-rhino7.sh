@@ -67,6 +67,10 @@ Options:
   --pin-dock          Pin Rhino to the COSMIC dock
   --skip-desktop      Skip the desktop entry and icon
   -h, --help          Show this help
+
+Environment:
+  RHINO_ICON          PNG to use as the application icon instead of extracting
+                      one from Rhino.exe
 EOF
 }
 
@@ -598,16 +602,31 @@ if [ "$SKIP_DESKTOP" -eq 0 ]; then
     # Use Rhino's own icon when icoutils is available, otherwise fall back to a
     # generic theme icon. No McNeel artwork is shipped in this repository.
     ICON_NAME="applications-graphics"
-    if [ -n "$RHINO_SYS_DIR" ] && command -v wrestool >/dev/null 2>&1 && command -v icotool >/dev/null 2>&1; then
+    if [ -n "${RHINO_ICON:-}" ] && [ -f "${RHINO_ICON:-}" ]; then
+        cp -f "$RHINO_ICON" "$ICON_DIR/rhino7.png"
+        ICON_NAME="rhino7"
+        echo "      Using the icon given in RHINO_ICON."
+    elif [ -n "$RHINO_SYS_DIR" ] && command -v wrestool >/dev/null 2>&1 && command -v icotool >/dev/null 2>&1; then
         tmp_icon="$(mktemp -d)"
         if wrestool -x -t 14 -o "$tmp_icon" "$RHINO_SYS_DIR/Rhino.exe" >/dev/null 2>&1; then
-            icotool -x -w 256 -o "$tmp_icon" "$tmp_icon"/*.ico >/dev/null 2>&1 || \
-                icotool -x -o "$tmp_icon" "$tmp_icon"/*.ico >/dev/null 2>&1 || true
-            extracted="$(find "$tmp_icon" -name '*.png' | sort | tail -n1)"
-            if [ -n "$extracted" ]; then
-                cp -f "$extracted" "$ICON_DIR/rhino7.png"
-                ICON_NAME="rhino7"
-                echo "      Extracted the application icon from Rhino.exe."
+            # Rhino.exe carries several icon groups - the document icon and
+            # Grasshopper among them. Windows shows the group with the lowest
+            # resource id as the application icon, so pick that one rather than
+            # whatever sorts last. wrestool names files <exe>_<type>_<id>_<lang>.
+            main_ico="$(ls "$tmp_icon"/*.ico 2>/dev/null | sort -t_ -k3,3n | head -n1)"
+            if [ -n "$main_ico" ]; then
+                mkdir -p "$tmp_icon/out"
+                icotool -x -w 256 -o "$tmp_icon/out" "$main_ico" >/dev/null 2>&1 || \
+                    icotool -x -o "$tmp_icon/out" "$main_ico" >/dev/null 2>&1 || true
+                # Largest available size, read from the <w>x<h>x<depth> suffix.
+                extracted="$(ls "$tmp_icon"/out/*.png 2>/dev/null \
+                    | sed -E 's/.*_([0-9]+)x[0-9]+x[0-9]+\.png$/\1 &/' \
+                    | sort -n | tail -n1 | cut -d' ' -f2-)"
+                if [ -n "$extracted" ] && [ -f "$extracted" ]; then
+                    cp -f "$extracted" "$ICON_DIR/rhino7.png"
+                    ICON_NAME="rhino7"
+                    echo "      Extracted the application icon from $(basename "$main_ico")."
+                fi
             fi
         fi
         rm -rf "$tmp_icon"
