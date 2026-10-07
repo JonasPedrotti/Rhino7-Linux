@@ -1,0 +1,36 @@
+# Refresh the GLX drawable geometry when the client window was resized.
+#
+# win32u detects a client surface size change and passes GL_FLUSH_UPDATED to the
+# driver from wglMakeCurrent, before the application draws. The framebuffer
+# backend uses that to resize its FBOs; the GLX backend returns from the
+# function before it ever looks at the flag. A GLXWindow does follow its X
+# window, but the GL implementation keeps its own cached geometry and refreshes
+# it on a round trip such as glXQueryDrawable. Without that, the first frame
+# after a resize is rendered into buffers of the old size: an application that
+# renders on demand, such as a CAD viewport, then shows content only in the area
+# the window had before, and the rest stays as it was.
+
+--- a/dlls/winex11.drv/opengl.c	2026-10-07 11:38:25.976966600 +0200
++++ b/dlls/winex11.drv/opengl.c	2026-10-07 11:38:40.564136600 +0200
+@@ -1183,6 +1183,21 @@
+     TRACE( "%s flags %#x\n", debugstr_opengl_drawable( base ), flags );
+ 
+     if (flags & GL_FLUSH_INTERVAL) set_swap_interval( gl, base->interval );
++
++    /* The client window was resized. A GLXWindow follows its X window, but the
++     * GL implementation keeps its own idea of the drawable geometry and only
++     * refreshes it on a round trip such as glXQueryDrawable. Without that, the
++     * first frame an application renders after a resize goes into buffers of
++     * the old size, and the part of the window that just appeared keeps
++     * whatever was in it. This runs from wglMakeCurrent, so the refresh happens
++     * before the application draws. */
++    if ((flags & GL_FLUSH_UPDATED) && pglXQueryDrawable && gl->drawable)
++    {
++        unsigned int width = 0, height = 0;
++        pglXQueryDrawable( gdi_display, gl->drawable, GLX_WIDTH, &width );
++        pglXQueryDrawable( gdi_display, gl->drawable, GLX_HEIGHT, &height );
++    }
++
+     if (!(flags & GL_FLUSH_PRESENT)) return;
+ 
+     if (InterlockedCompareExchange( &base->client->offscreen, 0, 0 ))
