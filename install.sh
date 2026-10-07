@@ -17,7 +17,8 @@
 #   --build-wine            Build the patched Wine 11.18 from source
 #   --wine-src <DIR>        Reuse an existing Wine source tree (implies --build-wine)
 #   --wine-install <DIR>    Install the built Wine here (default: ~/.local/share/wine-rhino7)
-#   --patches <SET>         all (default) or core; see docs/patches.md
+#   --patches <SET>         all (default), core or none; see docs/patches.md
+#   --wine-version <TAG>    Wine tag to build, e.g. wine-11.19 (implies --build-wine)
 #   --wayland               Also apply the experimental Wayland driver patch (16)
 #   --skip-dotnet           Do not install .NET Framework 4.8 / fonts
 #   --extras                Also install msxml6 and gdiplus
@@ -60,6 +61,7 @@ NTSYNC_ONLY=0
 RHINO_INSTALLER=""
 RUN_RHINO=0
 WINE_VERSION="wine-11.18"
+DEFAULT_WINE_VERSION="wine-11.18"
 
 # Rhino 7.38.24338.17001 (SR38, 2024-12-03), the final Rhino 7 service release,
 # from McNeel's own file server. Size and checksum verified on 2026-10-05.
@@ -98,7 +100,8 @@ Options:
   --build-wine            Build the patched Wine 11.18 from source
   --wine-src <DIR>        Reuse an existing Wine source tree (implies --build-wine)
   --wine-install <DIR>    Install the built Wine here (default: ~/.local/share/wine-rhino7)
-  --patches <SET>         all (default) or core; see docs/patches.md
+  --patches <SET>         all (default), core or none; see docs/patches.md
+  --wine-version <TAG>    Wine tag to build, e.g. wine-11.19 (implies --build-wine)
   --wayland               Also apply the experimental Wayland driver patch (16)
   --skip-dotnet           Do not install .NET Framework 4.8 / fonts
   --extras                Also install msxml6 and gdiplus
@@ -132,6 +135,7 @@ while [[ $# -gt 0 ]]; do
         --wine-src) WINE_SRC_DIR="$2"; BUILD_WINE=1; shift 2 ;;
         --wine-install) WINE_INSTALL_DIR="$2"; shift 2 ;;
         --patches) PATCH_SET="$2"; shift 2 ;;
+        --wine-version) WINE_VERSION="$2"; BUILD_WINE=1; shift 2 ;;
         --wayland) ENABLE_WAYLAND=1; shift ;;
         --skip-dotnet) SKIP_DOTNET=1; shift ;;
         --extras) INSTALL_EXTRAS=1; shift ;;
@@ -223,6 +227,13 @@ detect_session() {
         PIN_DOCK=1
     fi
 }
+
+# Keep a non-default Wine version out of the way of the standard installation,
+# unless the target was named explicitly.
+if [ "$WINE_VERSION" != "$DEFAULT_WINE_VERSION" ] && \
+   [ "$WINE_INSTALL_DIR" = "$HOME/.local/share/wine-rhino7" ]; then
+    WINE_INSTALL_DIR="$HOME/.local/share/wine-rhino7-$WINE_VERSION"
+fi
 
 detect_distro
 detect_session
@@ -582,9 +593,10 @@ resolve_wine() {
 selected_patches() {
     local list=""
     case "$PATCH_SET" in
+        none) return 0 ;;
         core) list="$CORE_PATCHES" ;;
         all)  list="$CORE_PATCHES $LICENSING_PATCHES $D3D_PATCHES" ;;
-        *) echo -e "${RED}Error: --patches must be 'all' or 'core'${NC}" >&2; exit 1 ;;
+        *) echo -e "${RED}Error: --patches must be 'all', 'core' or 'none'${NC}" >&2; exit 1 ;;
     esac
     [ "$ENABLE_WAYLAND" -eq 1 ] && list="$list $WAYLAND_PATCHES"
     # shellcheck disable=SC2086
@@ -593,8 +605,12 @@ selected_patches() {
 
 build_patched_wine() {
     echo -e "\n${BOLD}${BLUE}[Wine] Building patched Wine ${WINE_VERSION}...${NC}"
-    local src_dir="${WINE_SRC_DIR:-$REPO_DIR/wine-src}"
-    local build_dir="$REPO_DIR/build-wine"
+    # A non-default Wine version gets its own source, build and install
+    # directories, so trying another one never disturbs a working installation.
+    local suffix=""
+    [ "$WINE_VERSION" = "$DEFAULT_WINE_VERSION" ] || suffix="-$WINE_VERSION"
+    local src_dir="${WINE_SRC_DIR:-$REPO_DIR/wine-src$suffix}"
+    local build_dir="$REPO_DIR/build-wine$suffix"
 
     install_build_deps
 
