@@ -348,6 +348,13 @@ GDIPLUS_APP
 [HKEY_CURRENT_USER\Software\Wine\Drivers]
 "Graphics"="x11"
 
+; Rhino's panels, tooltips and popup menus are drawn by WPF, which renders
+; through Direct3D 9 by default. Under Wine that path produces black popups, so
+; WPF is told to render in software. This is separate from the OpenGL viewports
+; and costs nothing, because the UI is not what needs the GPU here.
+[HKEY_CURRENT_USER\Software\Microsoft\Avalon.Graphics]
+"DisableHWAcceleration"=dword:00000001
+
 ; Rhino 7 checks for Windows 10.
 [HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion]
 "CurrentBuild"="19045"

@@ -136,6 +136,33 @@ rather than keeping the old content, and nothing paints over it afterwards.
 Making Rhino draw is the only thing that would fix it, and no amount of
 invalidation from Wine's side achieved that here.
 
+## Black tooltips, panels or popup menus
+
+A different problem from the viewport one, with a different cause and an actual
+fix. Rhino draws these with WPF, which renders through Direct3D 9, and that path
+produces black popups under Wine. Tell WPF to render in software:
+
+```bash
+rhino-7 --stop
+WINEPREFIX=~/.wine-rhino7 wine reg add 'HKCU\Software\Microsoft\Avalon.Graphics' \
+    /v DisableHWAcceleration /t REG_DWORD /d 1 /f
+```
+
+The setup applies this by itself; the command above is for an older prefix. It
+costs nothing in practice, since the UI is not what needs the GPU.
+
+If popups stay black afterwards, try disabling the Windows theme as well, which
+some people report helps:
+
+```bash
+WINEPREFIX=~/.wine-rhino7 wine reg add \
+    'HKCU\Software\Microsoft\Windows\CurrentVersion\ThemeManager' \
+    /v ThemeActive /t REG_SZ /d 0 /f
+```
+
+That one is not applied automatically because it also changes how the whole
+interface looks.
+
 ## Tooltips in the wrong place
 
 Under COSMIC through XWayland, Rhino's tooltips can appear far from the cursor,
