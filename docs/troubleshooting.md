@@ -124,15 +124,18 @@ WINEPREFIX=~/.wine-rhino7 ~/.local/share/wine-rhino7/bin/wine reg add \
     'HKCU\Software\Wine\X11 Driver' /v EmulateModeset /d Y /f
 ```
 
-With this, the stale area appears once and not again. But `EmulateModeset` also
+With this, the stale area appears once and not again. `EmulateModeset` also
 makes Wine create the OpenGL surface at monitor size for mode set emulation,
-which shifts the coordinates: drawing a box interactively stops working. Unless
-you only ever look at models, it is not usable. Remove it with
+which is not what it is meant for here, so expect side effects elsewhere -
+notably in full screen handling. Remove it with
 `reg delete ... /v EmulateModeset /f`.
 
 That it helps at all is informative: the benefit comes from the surface being
 large enough from the start, not from the framebuffer backend - selecting that
 backend alone (patch 26) changes nothing.
+
+It does not fix interactive drawing, which is broken independently of this
+setting.
 
 Ruled out by testing, so you do not have to repeat it:
 
