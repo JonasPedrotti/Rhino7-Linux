@@ -77,6 +77,28 @@ cd ~/Rhino7-Linux && rm -rf build-wine && ./install.sh --build-wine
 compiling for an hour first. The usual root cause on Fedora is that
 `dnf builddep wine` does nothing because the source repositories are disabled.
 
+## "rundll32.exe - This application could not be started"
+
+Appears once or twice while the prefix is being updated, which happens after the
+Wine binary changes - not on every Rhino start. The cause is this setup's own
+`mscoree=native`, which gives Rhino the real .NET Framework but also applies to
+`rundll32.exe`, and `wineboot` runs that for Wine's own `wine.inf`:
+
+```
+C:\windows\syswow64\rundll32.exe setupapi,InstallHinfSection Wow64Install 128 ...\wine.inf
+```
+
+The 32-bit CLR fails to start there and the .NET shim puts up the dialog. Since
+`rundll32` has no reason to load `mscoree`, it is disabled for it:
+
+```bash
+WINEPREFIX=~/.wine-rhino7 wine reg add \
+    'HKCU\Software\Wine\AppDefaults\rundll32.exe\DllOverrides' /v mscoree /d "" /f
+```
+
+The setup does this; the command is for an older prefix. Use the Wine binary
+that belongs to the prefix, not whatever `wine` resolves to.
+
 ## After switching the Wine build
 
 **`wine: failed to load ...syswow64\ntdll.dll error c0000135`.** The Wine in use

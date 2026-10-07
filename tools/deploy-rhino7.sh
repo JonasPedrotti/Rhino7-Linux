@@ -300,22 +300,6 @@ if [ "$INSTALL_EXTRAS" -eq 1 ] && command -v winetricks >/dev/null 2>&1; then
     wait_wineserver
 fi
 
-# The .NET and Visual C++ installers leave RunOnce entries behind that Wine
-# executes on every prefix update. They call rundll32 with managed DLLs, fail,
-# pop up "This application could not be started", and because they fail they are
-# never cleared either - so the dialog returns after every Wine change. Their
-# work is long done, so the lists are emptied and recreated.
-echo "      Clearing leftover RunOnce entries..."
-for runonce_key in \
-    'HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce' \
-    'HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce' \
-    'HKLM\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce'; do
-    if "$WINE_BIN" reg query "$runonce_key" >/dev/null 2>&1; then
-        "$WINE_BIN" reg delete "$runonce_key" /f >/dev/null 2>&1 || true
-        "$WINE_BIN" reg add "$runonce_key" /f >/dev/null 2>&1 || true
-    fi
-done
-
 # Rhino 7 requires Windows 10 as the reported version.
 "$WINE_BIN" winecfg -v win10 >/dev/null 2>&1 || true
 
@@ -347,6 +331,14 @@ GDIPLUS_APP
 ; application through XWayland on COSMIC and other Wayland sessions.
 [HKEY_CURRENT_USER\Software\Wine\Drivers]
 "Graphics"="x11"
+
+; mscoree is native globally so that Rhino gets the real .NET Framework, but
+; that also applies to rundll32, which wineboot runs for Wine's own wine.inf
+; during a prefix update. The 32-bit CLR fails to start there and the .NET shim
+; puts up "This application could not be started" - twice, once per WoW64 pass.
+; rundll32 has no business loading mscoree at all, so it is disabled for it.
+[HKEY_CURRENT_USER\Software\Wine\AppDefaults\rundll32.exe\DllOverrides]
+"mscoree"=""
 
 ; Rhino's panels, tooltips and popup menus are drawn by WPF, which renders
 ; through Direct3D 9 by default. Under Wine that path produces black popups, so
