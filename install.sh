@@ -378,11 +378,17 @@ run_checks() {
         echo -e " $warn glxinfo not installed (Fedora: sudo dnf install glx-utils) - OpenGL unverified"
     fi
 
-    if [ -e /dev/ntsync ]; then
-        echo -e " $pass /dev/ntsync present (fast in-kernel synchronisation)"
+    if [ -w /dev/ntsync ]; then
+        echo -e " $pass /dev/ntsync usable (fast in-kernel synchronisation)"
+    elif [ -e /dev/ntsync ]; then
+        echo -e " $warn /dev/ntsync exists but is not writable by you"
+        echo -e "        fix: ${CYAN}./install.sh --ntsync${NC}"
+    elif modinfo ntsync >/dev/null 2>&1; then
+        echo -e " $warn ntsync module available but not loaded"
+        echo -e "        fix: ${CYAN}./install.sh --ntsync${NC}"
     else
-        echo -e " $warn /dev/ntsync missing; Wine falls back to futex synchronisation"
-        echo -e "        enable it with: ${CYAN}./install.sh --ntsync${NC}"
+        # Nothing to suggest - this kernel cannot provide it at all.
+        echo -e " $warn kernel $(uname -r) has no ntsync module; Wine uses futexes"
     fi
 
     local clr="$TARGET_PREFIX/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
@@ -541,6 +547,10 @@ show_plan() {
 }
 
 preflight
+
+# Set ntsync up on every run, not only with --deps. It needs root, so it is
+# skipped quietly when sudo is unavailable or the kernel has no such module.
+[ -w /dev/ntsync ] || enable_ntsync
 
 if [ "$INSTALL_DEPS" -eq 1 ]; then
     step "Installing packages"
