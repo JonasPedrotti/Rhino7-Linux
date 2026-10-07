@@ -1,0 +1,54 @@
+# Allow the framebuffer OpenGL surface without emulating mode setting.
+#
+# Wine has two OpenGL drawable implementations. The GLX one ignores
+# GL_FLUSH_UPDATED, so a resized child window is rendered into buffers of the
+# old size and an application that draws on demand keeps a stale viewport. The
+# framebuffer one acts on that flag and resizes its FBOs.
+#
+# Until now the framebuffer path could only be reached through EmulateModeset,
+# which also creates the client surface as "raw", that is sized to the monitor
+# for mode set emulation. That breaks coordinates for interactive drawing.
+#
+# This adds HKCU\Software\Wine\X11 Driver -> FramebufferSurface, which selects
+# the framebuffer drawable on its own and leaves mode setting alone.
+
+--- a/dlls/win32u/sysparams.c	2026-10-07 12:03:18.694526500 +0200
++++ b/dlls/win32u/sysparams.c	2026-10-07 12:03:18.775614600 +0200
+@@ -166,6 +166,7 @@
+ static pthread_mutex_t display_lock = PTHREAD_MUTEX_INITIALIZER;
+ 
+ BOOL emulate_modeset = FALSE;
++BOOL use_framebuffer_surface = FALSE;
+ BOOL decorated_mode = TRUE;
+ UINT64 thunk_lock_callback = 0;
+ 
+@@ -6080,6 +6081,8 @@
+         grab_fullscreen = IS_OPTION_TRUE( buffer[0] );
+     if (!get_config_key( hkey, appkey, "Decorated", buffer, sizeof(buffer) ))
+         decorated_mode = IS_OPTION_TRUE( buffer[0] );
++    if (!get_config_key( hkey, appkey, "FramebufferSurface", buffer, sizeof(buffer) ))
++        use_framebuffer_surface = IS_OPTION_TRUE( buffer[0] );
+     if (!get_config_key( hkey, appkey, "EmulateModeset", buffer, sizeof(buffer) ))
+         emulate_modeset = IS_OPTION_TRUE( buffer[0] );
+ 
+--- a/dlls/win32u/win32u_private.h	2026-10-07 12:03:18.701360800 +0200
++++ b/dlls/win32u/win32u_private.h	2026-10-07 12:03:18.798600100 +0200
+@@ -161,6 +161,7 @@
+ /* sysparams.c */
+ extern UINT system_dpi;
+ extern BOOL emulate_modeset;
++extern BOOL use_framebuffer_surface;
+ extern BOOL decorated_mode;
+ extern UINT64 thunk_lock_callback;
+ extern HBRUSH get_55aa_brush(void);
+--- a/dlls/win32u/opengl.c	2026-10-07 12:03:18.684760500 +0200
++++ b/dlls/win32u/opengl.c	2026-10-07 12:03:18.821058800 +0200
+@@ -2071,7 +2071,7 @@
+         {
+             if (!(driver_funcs->p_surface_create( client, format, &drawable )))
+                 WARN( "Failed to create a drawable for window %p, format %d\n", hwnd, format );
+-            else if (emulate_modeset && drawable->funcs != &framebuffer_surface_funcs)
++            else if ((emulate_modeset || use_framebuffer_surface) && drawable->funcs != &framebuffer_surface_funcs)
+             {
+                 struct opengl_drawable *framebuffer = framebuffer_surface_create( format, client, drawable );
+                 opengl_drawable_release( drawable );

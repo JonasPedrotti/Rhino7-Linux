@@ -1,6 +1,6 @@
 # Wine patches
 
-18 patches for X11 / XWayland plus one optional patch for the native Wayland
+19 patches for X11 / XWayland plus one optional patch for the native Wayland
 driver, carried unmodified from
 [Jabern/rhino-linux](https://github.com/Jabern/rhino-linux) and reduced to the
 subset that matters for **Rhino 7**. Upstream numbering is preserved; 06 and 07
@@ -31,6 +31,7 @@ of them are carried unmodified from upstream.
 | 19 | `19-wine-multimonitor-child-maximize.patch` | `win32u` | core |
 | 20 | `20-wine-xrandr-primary-anchor.patch` | `winex11.drv` | core |
 | 25 | `25-winex11-refresh-drawable-geometry.patch` | `winex11.drv` | core (this repo) |
+| 26 | `26-win32u-framebuffer-surface-option.patch` | `win32u` | core (this repo) |
 
 What each one fixes, and why it is in that group, is in
 [../docs/patches.md](../docs/patches.md).
