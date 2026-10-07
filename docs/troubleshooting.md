@@ -116,6 +116,24 @@ An expose event does not: dragging another window across the black area leaves
 it black. Rhino only paints on demand, and Wine does not deliver a paint for the
 resized OpenGL child window.
 
+The closest thing to a workaround found so far, with a serious catch:
+
+```bash
+rhino-7 --stop
+WINEPREFIX=~/.wine-rhino7 ~/.local/share/wine-rhino7/bin/wine reg add \
+    'HKCU\Software\Wine\X11 Driver' /v EmulateModeset /d Y /f
+```
+
+With this, the stale area appears once and not again. But `EmulateModeset` also
+makes Wine create the OpenGL surface at monitor size for mode set emulation,
+which shifts the coordinates: drawing a box interactively stops working. Unless
+you only ever look at models, it is not usable. Remove it with
+`reg delete ... /v EmulateModeset /f`.
+
+That it helps at all is informative: the benefit comes from the surface being
+large enough from the start, not from the framebuffer backend - selecting that
+backend alone (patch 26) changes nothing.
+
 Ruled out by testing, so you do not have to repeat it:
 
 | Suspicion | Test | Result |
@@ -126,6 +144,8 @@ Ruled out by testing, so you do not have to repeat it:
 | Covered sibling viewports blitting over it | `DCX_CLIPSIBLINGS` on the present | no change; a trace shows the siblings present once at startup and never again |
 | Stale surface rectangles | `WINEDEBUG=+x11drv`, read the present rects | correct: source and destination are the new size |
 | A missing repaint | invalidating every client-surface window on geometry change | no change, although it fired over a thousand times in one session |
+| Stale GLX drawable geometry | refresh it with glXQueryDrawable on GL_FLUSH_UPDATED (patch 25) | no change |
+| The GLX rather than the framebuffer backend | select the framebuffer drawable alone (patch 26) | no change; only the monitor-sized surface of EmulateModeset helps |
 
 What the traces show: between maximizing the viewport and the next view change,
 Wine performs **no present at all** for that window. Rhino simply does not render
